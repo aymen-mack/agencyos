@@ -85,7 +85,12 @@ export const AIAnalysisNode = memo(function AIAnalysisNode({ id, data }: NodePro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instruction: activeInstruction, inputs, skillId: skillId || null }),
       })
-      const json = await res.json()
+      let json: Record<string, string> = {}
+      try { json = await res.json() } catch {
+        throw new Error(res.status === 500
+          ? 'Server error — make sure ANTHROPIC_API_KEY is set in Vercel environment variables'
+          : `Server returned ${res.status}`)
+      }
       if (!res.ok) throw new Error(json.error || 'Run failed')
 
       const now = new Date().toLocaleTimeString()
