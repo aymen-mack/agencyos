@@ -75,7 +75,7 @@ export function Sidebar({ projects, currentProjectId: propProjectId }: SidebarPr
     { label: 'Dashboard',    href: `/dashboard/${currentProjectId}`,             icon: LayoutDashboard, disabled: false },
     { label: 'Leads',        href: `/dashboard/${currentProjectId}/leads`,        icon: Users,           disabled: false },
     { label: 'Automations',  href: `/dashboard/${currentProjectId}/automations`,  icon: GitBranch,       disabled: false },
-    { label: 'Tasks',        href: `/dashboard/${currentProjectId}/tasks`,        icon: CheckSquare,     disabled: true  },
+    { label: 'Tasks',        href: `/dashboard/${currentProjectId}/tasks`,        icon: CheckSquare,     disabled: false },
     { label: 'Integrations', href: `/dashboard/${currentProjectId}/integrations`, icon: Plug,            disabled: false },
     { label: 'Settings',     href: `/dashboard/${currentProjectId}/settings`,     icon: Settings,        disabled: false },
   ] : []

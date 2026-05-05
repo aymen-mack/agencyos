@@ -70,9 +70,9 @@ export async function GET(
     return rows.reduce((a, r) => a + (Number(r[field]) || 0), 0) / rows.length
   }
 
-  // KPI computations
-  const totalCash = sumField(wm, 'total_cash')
-  const totalCashPrev = sumField(wmPrev, 'total_cash')
+  // KPI computations — cash from real lead purchase_amount (Stripe/Whop) + webinar_metrics fallback
+  const totalCash = sumField(wm, 'total_cash') + lc.reduce((s: number, l: { purchase_amount?: number }) => s + (Number(l.purchase_amount) || 0), 0)
+  const totalCashPrev = sumField(wmPrev, 'total_cash') + lp.reduce((s: number, l: { purchase_amount?: number }) => s + (Number(l.purchase_amount) || 0), 0)
 
   const totalRevenue = sumField(wm, 'total_revenue')
   const totalRevenuePrev = sumField(wmPrev, 'total_revenue')
@@ -129,13 +129,20 @@ export async function GET(
     return points
   }
 
-  // Revenue over time (grouped by date)
+  // Revenue over time (grouped by date) — webinar_metrics + lead purchase amounts
   const revenueByDate: Record<string, { date: string; cash_collected: number; total_revenue: number }> = {}
   for (const row of wm) {
     const d = String(row.date)
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, cash_collected: 0, total_revenue: 0 }
     revenueByDate[d].cash_collected += Number(row.total_cash) || 0
     revenueByDate[d].total_revenue += Number(row.total_revenue) || 0
+  }
+  for (const l of lc) {
+    if (!l.purchase_amount) continue
+    const d = String(l.created_at).split('T')[0]
+    if (!revenueByDate[d]) revenueByDate[d] = { date: d, cash_collected: 0, total_revenue: 0 }
+    revenueByDate[d].cash_collected += Number(l.purchase_amount) || 0
+    revenueByDate[d].total_revenue += Number(l.purchase_amount) || 0
   }
 
   // Traffic sources (leads count by source)

@@ -170,6 +170,18 @@ export function LeadsTableView({
       ),
     },
     {
+      id: 'purchase_amount',
+      header: 'Amount',
+      accessorKey: 'purchase_amount',
+      size: 90,
+      cell: ({ row }) => {
+        const amt = row.original.purchase_amount
+        return amt
+          ? <span className="text-emerald-400 font-medium text-xs tabular-nums">${Number(amt).toLocaleString()}</span>
+          : <span className="text-muted-foreground text-xs">—</span>
+      },
+    },
+    {
       id: 'actions',
       header: '',
       size: 60,

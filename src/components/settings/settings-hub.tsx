@@ -83,6 +83,40 @@ export function SettingsHub({ projectId, integrations }: SettingsHubProps) {
         />
       </section>
 
+      {/* Webflow */}
+      <section>
+        <h2 className="text-base font-semibold text-foreground mb-1">Webflow</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Receive registrations from Webflow form submissions directly into this project's leads.
+        </p>
+        <div className="space-y-3">
+          <WebhookSection
+            label="Webflow Webhook URL"
+            url={`${webhookBase}/webflow?projectId=${projectId}`}
+            description="Paste this in Webflow → Site Settings → Integrations → Webhooks. Set trigger to Form Submission."
+            docsSteps={[
+              'In Webflow, open Site Settings → Integrations → Webhooks',
+              'Click Add Webhook',
+              'Set Trigger Type to Form Submission',
+              'Paste the URL above and save',
+              'Webflow will display a signing secret — copy it',
+              'Paste that signing secret in the field below and click Save',
+            ]}
+          />
+          <ApiKeySection
+            projectId={projectId}
+            provider="webflow"
+            label="Webflow"
+            icon="🌊"
+            description="Signing secret from Webflow — used to verify requests are genuinely from Webflow."
+            fields={[
+              { key: 'webhook_secret', label: 'Webhook Signing Secret', placeholder: 'paste the key Webflow gave you' },
+            ]}
+            integration={getIntegration('webflow')}
+          />
+        </div>
+      </section>
+
       {/* Typeform */}
       <section>
         <h2 className="text-base font-semibold text-foreground mb-1">Typeform</h2>

@@ -19,6 +19,19 @@ function verifyMakeSignature(body: string, signature: string | null): boolean {
   return true
 }
 
+function verifyWebflowSignature(body: string, signature: string | null, secret: string | null | undefined): boolean {
+  if (!secret) return true // no secret saved yet — allow through
+  if (!signature) return false
+  const hmac = crypto.createHmac('sha256', secret)
+  hmac.update(body)
+  const digest = hmac.digest('hex')
+  try {
+    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature))
+  } catch {
+    return false
+  }
+}
+
 // ---- Handlers ----
 
 async function handleTypeform(
@@ -117,10 +130,35 @@ async function handleTypeform(
 async function handleMake(payload: Record<string, unknown>, projectId: string) {
   // Make.com sends structured data — handles arbitrary events
   const admin = createSupabaseAdminClient()
-  const eventType = payload.event_type as string || 'make_event'
-  const email = payload.email as string
+  const eventType = (payload.event_type || payload.Event_type || payload.EventType) as string || 'make_event'
+
+  // Accept any capitalisation Make might use for the field keys
+  const email = (
+    payload.email || payload.Email || payload.EMAIL
+  ) as string
 
   if (!email) return
+
+  const fullName = (
+    payload.name || payload.Name || payload.NAME ||
+    payload.full_name || payload.Full_Name || payload.FullName
+  ) as string | undefined
+
+  const phone = (
+    payload.phone || payload.Phone || payload.PHONE ||
+    payload.phone_number || payload['Phone Number']
+  ) as string | undefined
+
+  const source = (
+    payload.source || payload.Source || 'webflow'
+  ) as string
+
+  // Accept dollars (purchase_amount) or cents (amount_subtotal / amount_cents from Stripe via Make)
+  const dollars = Number(payload.purchase_amount || payload.Purchase_Amount || payload.amount || payload.Amount || 0)
+  const cents = Number(payload.amount_subtotal || payload.amount_cents || payload.Amount_Subtotal || 0)
+  const purchaseAmount = dollars || (cents > 0 ? cents / 100 : null)
+
+  const isDeal = eventType === 'deal_closed'
 
   // Upsert lead
   const { data: lead } = await admin
@@ -128,9 +166,12 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
     .upsert(
       {
         project_id: projectId,
-        email,
-        full_name: payload.name as string || null,
-        source: 'make',
+        email: email.trim().toLowerCase(),
+        full_name: fullName || null,
+        phone: phone || null,
+        source,
+        status: isDeal ? 'purchased' : 'registered',
+        ...(isDeal && purchaseAmount ? { purchase_amount: purchaseAmount } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'project_id,email' }
@@ -186,7 +227,7 @@ async function handleStripe(payload: Record<string, unknown>, projectId: string)
       const { data: lead } = await admin
         .from('leads')
         .upsert(
-          { project_id: projectId, email, source: 'stripe', updated_at: new Date().toISOString() },
+          { project_id: projectId, email, source: 'stripe', status: 'purchased', purchase_amount: amount, updated_at: new Date().toISOString() },
           { onConflict: 'project_id,email' }
         )
         .select()
@@ -221,10 +262,16 @@ async function handleWhop(payload: Record<string, unknown>, projectId: string) {
 
   if (!email) return
 
+  const amount = Number(
+    (payload.checkout as Record<string, unknown>)?.final_price ||
+    (payload.membership as Record<string, unknown>)?.price ||
+    payload.amount || payload.price || 0
+  ) / 100
+
   const { data: lead } = await admin
     .from('leads')
     .upsert(
-      { project_id: projectId, email, source: 'whop', updated_at: new Date().toISOString() },
+      { project_id: projectId, email, source: 'whop', status: 'purchased', purchase_amount: amount || null, updated_at: new Date().toISOString() },
       { onConflict: 'project_id,email' }
     )
     .select()
@@ -239,6 +286,80 @@ async function handleWhop(payload: Record<string, unknown>, projectId: string) {
       score_delta: SCORE_WEIGHTS.deal_closed,
     })
   }
+}
+
+// Webflow form submission webhook
+// Payload shape: { formData: { name, email, phone, ... }, form: { displayName }, site: { name } }
+async function handleWebflow(payload: Record<string, unknown>, projectId: string) {
+  const admin = createSupabaseAdminClient()
+
+  const formData = (payload.formData ?? payload.data ?? payload) as Record<string, string>
+
+  // Webflow sends field values keyed by field name — try common field name patterns
+  const email =
+    formData.email ||
+    formData.Email ||
+    formData['e-mail'] ||
+    formData['Email Address'] ||
+    ''
+
+  if (!email) {
+    console.warn('Webflow webhook: no email field found in formData', formData)
+    return
+  }
+
+  const name =
+    formData.name ||
+    formData.Name ||
+    formData['full-name'] ||
+    formData['Full Name'] ||
+    formData['first-name'] ||
+    formData.firstName ||
+    ''
+
+  const phone =
+    formData.phone ||
+    formData.Phone ||
+    formData['phone-number'] ||
+    formData['Phone Number'] ||
+    null
+
+  const source = 'webflow'
+
+  const { data: lead, error } = await admin
+    .from('leads')
+    .upsert(
+      {
+        project_id: projectId,
+        email: email.trim().toLowerCase(),
+        full_name: name || null,
+        phone: phone || null,
+        source,
+        status: 'registered',
+        survey_data: formData as unknown as Json,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'project_id,email' }
+    )
+    .select()
+    .single()
+
+  if (error || !lead) {
+    console.error('Webflow webhook: failed to upsert lead', error)
+    return
+  }
+
+  await admin.from('lead_events').insert({
+    lead_id: lead.id,
+    project_id: projectId,
+    type: 'form_submission',
+    payload: {
+      source: 'webflow',
+      form: (payload.form as Record<string, string>)?.displayName ?? 'Webflow Form',
+      submitted_at: new Date().toISOString(),
+    } as Json,
+    score_delta: SCORE_WEIGHTS.form_submission,
+  })
 }
 
 // ---- Main route handler ----
@@ -270,6 +391,20 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
   }
+  if (provider === 'webflow') {
+    const admin = createSupabaseAdminClient()
+    const { data: integration } = await admin
+      .from('integrations')
+      .select('metadata, access_token')
+      .eq('project_id', projectId)
+      .eq('provider', 'webflow')
+      .single()
+    const secret = (integration?.metadata as Record<string, string> | null)?.webhook_secret ?? integration?.access_token
+    const sig = req.headers.get('x-webflow-signature')
+    if (!verifyWebflowSignature(rawBody, sig, secret)) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+  }
 
   // Dispatch to handler
   try {
@@ -285,6 +420,9 @@ export async function POST(
         break
       case 'whop':
         await handleWhop(payload, projectId)
+        break
+      case 'webflow':
+        await handleWebflow(payload, projectId)
         break
       default:
         return NextResponse.json({ error: 'Unknown provider' }, { status: 404 })

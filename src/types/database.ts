@@ -212,6 +212,10 @@ export interface Database {
           status: string
           survey_data: Json
           tags: string[]
+          campaign: string | null
+          attended: boolean
+          purchase_amount: number | null
+          payment_status: string | null
           created_at: string
           updated_at: string
         }
@@ -228,6 +232,10 @@ export interface Database {
           status?: string
           survey_data?: Json
           tags?: string[]
+          campaign?: string | null
+          attended?: boolean
+          purchase_amount?: number | null
+          payment_status?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -242,6 +250,10 @@ export interface Database {
           status?: string
           survey_data?: Json
           tags?: string[]
+          campaign?: string | null
+          attended?: boolean
+          purchase_amount?: number | null
+          payment_status?: string | null
           updated_at?: string
         }
         Relationships: []
