@@ -37,7 +37,7 @@ interface Props { projectId: string }
 type SeedState = 'idle' | 'seeding' | 'done' | 'deleting'
 
 export function OverviewTab({ projectId }: Props) {
-  const [period, setPeriod] = useState<'today' | 'custom'>('today')
+  const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'mtd' | 'ytd' | 'custom'>('today')
   const [customOpen, setCustomOpen] = useState(false)
   const [customStart, setCustomStart] = useState(() => new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0])
   const [customEnd, setCustomEnd]   = useState(() => new Date().toISOString().split('T')[0])
@@ -51,14 +51,31 @@ export function OverviewTab({ projectId }: Props) {
   const [seedState, setSeedState] = useState<SeedState>('idle')
 
   const getRange = useCallback(() => {
+    const now = new Date()
+    const end = new Date(); end.setHours(23, 59, 59, 999)
     if (period === 'today') {
       const start = new Date(); start.setHours(0, 0, 0, 0)
-      const end   = new Date(); end.setHours(23, 59, 59, 999)
+      return { start, end }
+    }
+    if (period === '7d') {
+      const start = new Date(Date.now() - 6 * 86400000); start.setHours(0, 0, 0, 0)
+      return { start, end }
+    }
+    if (period === '30d') {
+      const start = new Date(Date.now() - 29 * 86400000); start.setHours(0, 0, 0, 0)
+      return { start, end }
+    }
+    if (period === 'mtd') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { start, end }
+    }
+    if (period === 'ytd') {
+      const start = new Date(now.getFullYear(), 0, 1)
       return { start, end }
     }
     const start = new Date(customStart); start.setHours(0, 0, 0, 0)
-    const end   = new Date(customEnd);   end.setHours(23, 59, 59, 999)
-    return { start, end }
+    const customEndDate = new Date(customEnd); customEndDate.setHours(23, 59, 59, 999)
+    return { start, end: customEndDate }
   }, [period, customStart, customEnd])
 
   const fetchSummary = useCallback(async () => {
@@ -147,36 +164,37 @@ export function OverviewTab({ projectId }: Props) {
   return (
     <div className="space-y-5">
 
-      {/* ── Top row: toggle + seed buttons ─────────────────────────────── */}
+      {/* ── Top row: period tabs + seed buttons ────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div className="relative flex items-center">
-          <div className="flex items-center gap-0.5 bg-[#1a1a1a] border border-white/[0.07] rounded-lg p-1">
-            <button
-              onClick={() => { setPeriod('today'); setCustomOpen(false) }}
-              className={cn(
-                'px-4 py-1.5 rounded-md text-sm font-medium transition-all',
-                period === 'today' ? 'bg-white/[0.1] text-white' : 'text-zinc-500 hover:text-zinc-300'
-              )}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => { setPeriod('custom'); setCustomOpen((v) => !v) }}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-all',
-                period === 'custom' ? 'bg-white/[0.1] text-white' : 'text-zinc-500 hover:text-zinc-300'
-              )}
-            >
-              Custom
-              <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', customOpen && 'rotate-180')} />
-            </button>
-          </div>
+        <div className="relative flex items-center gap-1">
+          {(['today', '7d', '30d', 'mtd', 'ytd', 'custom'] as const).map((p) => {
+            const labels: Record<string, string> = { today: 'Today', '7d': '7 Days', '30d': '30 Days', mtd: 'MTD', ytd: 'YTD', custom: 'Custom' }
+            const isActive = period === p
+            return (
+              <button
+                key={p}
+                onClick={() => {
+                  setPeriod(p)
+                  if (p === 'custom') setCustomOpen((v) => !v)
+                  else setCustomOpen(false)
+                }}
+                className={cn(
+                  'relative px-2.5 py-1.5 text-sm font-medium transition-all',
+                  isActive ? 'text-white' : 'text-white/40 hover:text-white/70'
+                )}
+              >
+                {labels[p]}
+                {p === 'custom' && <ChevronDown className={cn('inline ml-1 w-3 h-3 transition-transform', customOpen && 'rotate-180')} />}
+                {isActive && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-white rounded-full" />}
+              </button>
+            )
+          })}
 
           {/* Custom date picker dropdown */}
           {customOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setCustomOpen(false)} />
-              <div className="absolute left-0 top-full mt-1.5 z-50 bg-[#1c1c1c] border border-white/[0.1] rounded-xl shadow-2xl p-3 w-56 space-y-2">
+              <div className="absolute left-0 top-full mt-2 z-50 bg-[#1c1c1c] border border-white/[0.1] rounded-xl shadow-2xl p-3 w-56 space-y-2">
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1.5"><CalendarDays className="w-3 h-3" /> Custom Range</p>
                 <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)}
                   className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/40" />
