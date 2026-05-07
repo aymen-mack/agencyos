@@ -134,6 +134,7 @@ async function handleTypeform(
         source: 'typeform',
         source_ref: response?.form_id as string || null,
         survey_data: surveyData as Json,
+        is_registrant: true,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'project_id,email' }
@@ -219,7 +220,7 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
       full_name: fullName,
     })
   } else {
-    // Registration/engagement event: normal upsert, update all fields
+    // Registration/engagement event: mark as registrant
     const { data } = await admin
       .from('leads')
       .upsert(
@@ -230,6 +231,7 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
           phone: phone || null,
           source,
           status: 'registered',
+          is_registrant: true,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'project_id,email' }
@@ -379,6 +381,7 @@ async function handleWebflow(payload: Record<string, unknown>, projectId: string
         phone: phone || null,
         source,
         status: 'registered',
+        is_registrant: true,
         survey_data: formData as unknown as Json,
         updated_at: new Date().toISOString(),
       },

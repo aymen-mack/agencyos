@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { PIPELINE_STAGES } from '@/lib/pipeline'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Trash2, Tag, X } from 'lucide-react'
+import { Trash2, Tag, X, UserCheck, UserX } from 'lucide-react'
 
 interface BulkActionsBarProps {
   count: number
@@ -80,6 +80,18 @@ export function BulkActionsBar({ count, allTags, onBulkAction, onClear }: BulkAc
           Add Tag
         </Button>
       )}
+
+      {/* Registrant toggle */}
+      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-emerald-600 hover:text-emerald-500"
+        onClick={() => onBulkAction('set_registrant', { value: true })}>
+        <UserCheck className="w-3.5 h-3.5" />
+        Mark Registrant
+      </Button>
+      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-amber-600 hover:text-amber-500"
+        onClick={() => onBulkAction('set_registrant', { value: false })}>
+        <UserX className="w-3.5 h-3.5" />
+        Remove Registrant
+      </Button>
 
       {/* Delete */}
       <Button

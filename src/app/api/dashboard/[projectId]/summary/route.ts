@@ -86,10 +86,9 @@ export async function GET(
   const avgPerClose = dealsClosed > 0 ? totalRevenue / dealsClosed : 0
   const avgPerClosePrev = dealsClosedPrev > 0 ? totalRevenuePrev / dealsClosedPrev : 0
 
-  // Payment-only sources don't count as registrants — they only appear in Closed Deals
-  const PAYMENT_SOURCES = ['stripe', 'whop']
-  const totalReg = lc.filter((l) => !PAYMENT_SOURCES.includes(l.source)).length
-  const totalRegPrev = lp.filter((l: { source: string }) => !PAYMENT_SOURCES.includes(l.source)).length
+  // is_registrant is the explicit source of truth — set by registration webhooks, toggled via bulk UI
+  const totalReg = lc.filter((l) => l.is_registrant === true).length
+  const totalRegPrev = lp.filter((l: { is_registrant: boolean }) => l.is_registrant === true).length
 
   const totalAttended = lc.filter((l) => l.attended).length
   const showRate = totalReg > 0 ? (totalAttended / totalReg) * 100 : 0

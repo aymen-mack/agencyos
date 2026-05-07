@@ -39,6 +39,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  if (action === 'set_registrant') {
+    const { error } = await admin
+      .from('leads')
+      .update({ is_registrant: Boolean(data?.value), updated_at: new Date().toISOString() })
+      .in('id', leadIds)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
   if (action === 'remove_tag') {
     const { data: leads } = await admin.from('leads').select('id, tags').in('id', leadIds)
     for (const lead of leads || []) {

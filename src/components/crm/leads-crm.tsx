@@ -106,6 +106,9 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
     } else if (action === 'update_status' && data?.status) {
       setLeads((prev) => prev.map((l) => selectedIds.has(l.id) ? { ...l, status: data.status as string } : l))
       setSelectedIds(new Set())
+    } else if (action === 'set_registrant') {
+      setLeads((prev) => prev.map((l) => selectedIds.has(l.id) ? { ...l, is_registrant: Boolean(data?.value) } : l))
+      setSelectedIds(new Set())
     } else if (action === 'add_tag' && data?.tag) {
       setLeads((prev) => prev.map((l) =>
         selectedIds.has(l.id)

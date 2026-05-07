@@ -216,6 +216,7 @@ export interface Database {
           attended: boolean
           purchase_amount: number | null
           payment_status: string | null
+          is_registrant: boolean
           created_at: string
           updated_at: string
         }
@@ -236,6 +237,7 @@ export interface Database {
           attended?: boolean
           purchase_amount?: number | null
           payment_status?: string | null
+          is_registrant?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -254,6 +256,7 @@ export interface Database {
           attended?: boolean
           purchase_amount?: number | null
           payment_status?: string | null
+          is_registrant?: boolean
           updated_at?: string
         }
         Relationships: []
