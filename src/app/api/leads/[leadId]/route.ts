@@ -23,6 +23,8 @@ export async function PATCH(
     score?: number
     score_breakdown?: import('@/types/database').Json
     survey_data?: import('@/types/database').Json
+    purchase_amount?: number | null
+    payment_status?: string | null
     updated_at?: string
   }
   const update: LeadUpdate = { updated_at: new Date().toISOString() }
@@ -35,6 +37,8 @@ export async function PATCH(
   if ('score' in body) update.score = body.score
   if ('score_breakdown' in body) update.score_breakdown = body.score_breakdown
   if ('survey_data' in body) update.survey_data = body.survey_data
+  if ('purchase_amount' in body) update.purchase_amount = body.purchase_amount === '' || body.purchase_amount === null ? null : Number(body.purchase_amount)
+  if ('payment_status' in body) update.payment_status = body.payment_status
 
   const admin = createSupabaseAdminClient()
 

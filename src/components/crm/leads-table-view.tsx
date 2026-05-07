@@ -12,7 +12,52 @@ import { StatusCell } from './status-cell'
 import { TagsInput } from './tags-input'
 import { cn } from '@/lib/utils'
 import { Trash2, ExternalLink } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
+
+function AmountCell({ value, onSave }: { value: number | null; onSave: (v: number | null) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value != null ? String(value) : '')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setDraft(value != null ? String(value) : '') }, [value])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  function commit() {
+    setEditing(false)
+    const num = draft.trim() === '' ? null : parseFloat(draft.replace(/[^0-9.]/g, ''))
+    if (num !== value) onSave(isNaN(num as number) ? null : num)
+  }
+
+  if (editing) {
+    return (
+      <div className="relative flex items-center">
+        <span className="absolute left-2 text-xs text-zinc-400">$</span>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+          className="w-full bg-secondary border border-primary/40 rounded pl-5 pr-2 py-0.5 text-xs text-foreground outline-none tabular-nums"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <span
+      onClick={() => setEditing(true)}
+      className={cn(
+        'block cursor-pointer px-2 py-0.5 rounded hover:bg-secondary/60 transition-colors text-xs tabular-nums',
+        value != null ? 'text-emerald-400 font-medium' : 'text-muted-foreground'
+      )}
+    >
+      {value != null ? `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+    </span>
+  )
+}
 
 interface LeadsTableViewProps {
   leads: Lead[]
@@ -173,13 +218,11 @@ export function LeadsTableView({
       id: 'purchase_amount',
       header: 'Amount',
       accessorKey: 'purchase_amount',
-      size: 90,
-      cell: ({ row }) => {
-        const amt = row.original.purchase_amount
-        return amt
-          ? <span className="text-emerald-400 font-medium text-xs tabular-nums">${Number(amt).toLocaleString()}</span>
-          : <span className="text-muted-foreground text-xs">—</span>
-      },
+      size: 100,
+      cell: ({ row }) => <AmountCell
+        value={row.original.purchase_amount}
+        onSave={(v) => onUpdateLead(row.original.id, { purchase_amount: v })}
+      />,
     },
     {
       id: 'actions',
