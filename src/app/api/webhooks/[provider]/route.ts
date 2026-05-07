@@ -210,7 +210,7 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
 
   const isDeal = eventType === 'deal_closed'
 
-  let lead: Record<string, unknown> | null = null
+  let lead: { id: string; project_id: string; [key: string]: unknown } | null = null
 
   if (isDeal) {
     // Payment event: preserve existing registration source if lead already exists
