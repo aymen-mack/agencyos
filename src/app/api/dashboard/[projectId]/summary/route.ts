@@ -47,8 +47,8 @@ export async function GET(
     admin.from('ad_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
     admin.from('email_metrics').select('*').eq('project_id', projectId).gte('date', s).lte('date', e),
     admin.from('email_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
-    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,created_at').eq('project_id', projectId).gte('created_at', start.toISOString()).lte('created_at', end.toISOString()),
-    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,created_at').eq('project_id', projectId).gte('created_at', prevStart.toISOString()).lte('created_at', prevEnd.toISOString()),
+    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,is_registrant,created_at').eq('project_id', projectId).gte('created_at', start.toISOString()).lte('created_at', end.toISOString()),
+    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,is_registrant,created_at').eq('project_id', projectId).gte('created_at', prevStart.toISOString()).lte('created_at', prevEnd.toISOString()),
   ])
 
   const wm = (webinarCurr || []) as Record<string, number>[]
