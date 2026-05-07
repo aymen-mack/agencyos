@@ -32,6 +32,55 @@ function verifyWebflowSignature(body: string, signature: string | null, secret: 
   }
 }
 
+// ---- Payment attribution helper ----
+// For payment events: if the lead already exists (registered before), only update payment
+// fields so their original source/registration status is preserved. If they're brand new
+// (paid without ever registering), create them with the payment source.
+async function upsertLeadForPayment(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  projectId: string,
+  email: string,
+  opts: { source: string; purchase_amount: number | null; full_name?: string | null }
+) {
+  const { data: existing } = await admin
+    .from('leads')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle()
+
+  if (existing) {
+    // Lead already registered — update payment fields only, keep their original source
+    const { data: lead } = await admin
+      .from('leads')
+      .update({
+        status: 'purchased',
+        ...(opts.purchase_amount != null ? { purchase_amount: opts.purchase_amount } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .select()
+      .single()
+    return lead
+  } else {
+    // New lead from payment only — create with payment source (won't count as registrant)
+    const { data: lead } = await admin
+      .from('leads')
+      .insert({
+        project_id: projectId,
+        email: email.trim().toLowerCase(),
+        full_name: opts.full_name || null,
+        source: opts.source,
+        status: 'purchased',
+        purchase_amount: opts.purchase_amount,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+    return lead
+  }
+}
+
 // ---- Handlers ----
 
 async function handleTypeform(
@@ -160,24 +209,35 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
 
   const isDeal = eventType === 'deal_closed'
 
-  // Upsert lead
-  const { data: lead } = await admin
-    .from('leads')
-    .upsert(
-      {
-        project_id: projectId,
-        email: email.trim().toLowerCase(),
-        full_name: fullName || null,
-        phone: phone || null,
-        source,
-        status: isDeal ? 'purchased' : 'registered',
-        ...(isDeal && purchaseAmount ? { purchase_amount: purchaseAmount } : {}),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'project_id,email' }
-    )
-    .select()
-    .single()
+  let lead: Record<string, unknown> | null = null
+
+  if (isDeal) {
+    // Payment event: preserve existing registration source if lead already exists
+    lead = await upsertLeadForPayment(admin, projectId, email, {
+      source,
+      purchase_amount: purchaseAmount,
+      full_name: fullName,
+    })
+  } else {
+    // Registration/engagement event: normal upsert, update all fields
+    const { data } = await admin
+      .from('leads')
+      .upsert(
+        {
+          project_id: projectId,
+          email: email.trim().toLowerCase(),
+          full_name: fullName || null,
+          phone: phone || null,
+          source,
+          status: 'registered',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'project_id,email' }
+      )
+      .select()
+      .single()
+    lead = data
+  }
 
   if (!lead) return
 
@@ -220,18 +280,10 @@ async function handleStripe(payload: Record<string, unknown>, projectId: string)
     const obj = data?.object as Record<string, unknown>
     const billingDetails = obj?.billing_details as Record<string, string> | undefined
     const email = (obj?.receipt_email || billingDetails?.email) as string
-    const amount = (obj?.amount as number || 0) / 100 // Stripe amounts are in cents
+    const amount = (obj?.amount as number || 0) / 100
 
     if (email) {
-      // Upsert lead + insert event
-      const { data: lead } = await admin
-        .from('leads')
-        .upsert(
-          { project_id: projectId, email, source: 'stripe', status: 'purchased', purchase_amount: amount, updated_at: new Date().toISOString() },
-          { onConflict: 'project_id,email' }
-        )
-        .select()
-        .single()
+      const lead = await upsertLeadForPayment(admin, projectId, email, { source: 'stripe', purchase_amount: amount })
 
       if (lead) {
         await admin.from('lead_events').insert({
@@ -241,8 +293,6 @@ async function handleStripe(payload: Record<string, unknown>, projectId: string)
           payload: { amount, stripe_event: eventType } as Json,
           score_delta: SCORE_WEIGHTS.deal_closed,
         })
-
-        // Create sales record
         await admin.from('sales').insert({
           project_id: projectId,
           lead_id: lead.id,
@@ -268,14 +318,7 @@ async function handleWhop(payload: Record<string, unknown>, projectId: string) {
     payload.amount || payload.price || 0
   ) / 100
 
-  const { data: lead } = await admin
-    .from('leads')
-    .upsert(
-      { project_id: projectId, email, source: 'whop', status: 'purchased', purchase_amount: amount || null, updated_at: new Date().toISOString() },
-      { onConflict: 'project_id,email' }
-    )
-    .select()
-    .single()
+  const lead = await upsertLeadForPayment(admin, projectId, email, { source: 'whop', purchase_amount: amount || null })
 
   if (lead) {
     await admin.from('lead_events').insert({

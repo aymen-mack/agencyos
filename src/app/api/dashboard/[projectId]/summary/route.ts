@@ -86,16 +86,18 @@ export async function GET(
   const avgPerClose = dealsClosed > 0 ? totalRevenue / dealsClosed : 0
   const avgPerClosePrev = dealsClosedPrev > 0 ? totalRevenuePrev / dealsClosedPrev : 0
 
-  const totalReg = lc.length
-  const totalRegPrev = lp.length
+  // Payment-only sources don't count as registrants — they only appear in Closed Deals
+  const PAYMENT_SOURCES = ['stripe', 'whop']
+  const totalReg = lc.filter((l) => !PAYMENT_SOURCES.includes(l.source)).length
+  const totalRegPrev = lp.filter((l: { source: string }) => !PAYMENT_SOURCES.includes(l.source)).length
 
   const totalAttended = lc.filter((l) => l.attended).length
   const showRate = totalReg > 0 ? (totalAttended / totalReg) * 100 : 0
-  const showRatePrev = lp.length > 0 ? (lp.filter((l: { attended: boolean }) => l.attended).length / lp.length) * 100 : 0
+  const showRatePrev = totalRegPrev > 0 ? (lp.filter((l: { attended: boolean }) => l.attended).length / totalRegPrev) * 100 : 0
 
   const totalPurchased = lc.filter((l) => l.status === 'purchased').length
   const convRate = totalReg > 0 ? (totalPurchased / totalReg) * 100 : 0
-  const convRatePrev = lp.length > 0 ? (lp.filter((l: { status: string }) => l.status === 'purchased').length / lp.length) * 100 : 0
+  const convRatePrev = totalRegPrev > 0 ? (lp.filter((l: { status: string }) => l.status === 'purchased').length / totalRegPrev) * 100 : 0
 
   const totalRefunded = lc.filter((l) => l.status === 'refunded').length
   const refundRate = totalPurchased + totalRefunded > 0 ? (totalRefunded / (totalPurchased + totalRefunded)) * 100 : 0
