@@ -54,7 +54,7 @@ async function upsertLeadForPayment(
     const { data: lead } = await admin
       .from('leads')
       .update({
-        status: 'purchased',
+        status: 'closed_deal',
         ...(opts.purchase_amount != null ? { purchase_amount: opts.purchase_amount } : {}),
         updated_at: new Date().toISOString(),
       })
@@ -71,7 +71,7 @@ async function upsertLeadForPayment(
         email: email.trim().toLowerCase(),
         full_name: opts.full_name || null,
         source: opts.source,
-        status: 'purchased',
+        status: 'closed_deal',
         purchase_amount: opts.purchase_amount,
         updated_at: new Date().toISOString(),
       })
@@ -230,7 +230,7 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
           full_name: fullName || null,
           phone: phone || null,
           source,
-          status: 'registered',
+          status: 'registrant',
           is_registrant: true,
           updated_at: new Date().toISOString(),
         },

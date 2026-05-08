@@ -1,24 +1,27 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   AreaChart, Area, PieChart, Pie, Cell,
   Tooltip, ResponsiveContainer, XAxis, YAxis,
 } from 'recharts'
-import { Search, Database, CheckCircle2, Trash2, CalendarDays, ChevronDown } from 'lucide-react'
+import { Database, CheckCircle2, Trash2, CalendarDays, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { DashboardSummary, DashboardLead } from './types'
+import type { DashboardSummary } from './types'
+import { Lead } from '@/types/database'
+import { LeadsTableView } from '@/components/crm/leads-table-view'
+import { LeadDetailSheet } from '@/components/crm/lead-detail-sheet'
 
 const DONUT_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
 
 const TABLE_TABS = [
-  { label: 'All',          filter: 'all'        },
-  { label: 'Registrants',  filter: 'registered' },
-  { label: 'Surveys',      filter: 'registered' },
-  { label: 'Shows',        filter: 'attended'   },
-  { label: 'Booked Calls', filter: 'attended'   },
-  { label: 'Showed Deals', filter: 'attended'   },
-  { label: 'Closed Deals', filter: 'purchased'  },
+  { label: 'All',          filter: ''            },
+  { label: 'Registrants',  filter: 'registrant'  },
+  { label: 'Surveys',      filter: 'survey_filled' },
+  { label: 'Shows',        filter: 'webinar_show'  },
+  { label: 'Booked Calls', filter: 'call_booked'   },
+  { label: 'Showed Deals', filter: 'call_showed'   },
+  { label: 'Closed Deals', filter: 'closed_deal'   },
 ]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,10 +47,12 @@ export function OverviewTab({ projectId }: Props) {
   const [summary, setSummary]   = useState<DashboardSummary | null>(null)
   const [loading, setLoading]   = useState(true)
   const [activeTab, setActiveTab]   = useState('All')
-  const [leads, setLeads]       = useState<DashboardLead[]>([])
-  const [leadsTotal, setLeadsTotal] = useState(0)
+  const [allLeads, setAllLeads] = useState<Lead[]>([])
   const [leadsLoading, setLeadsLoading] = useState(true)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [searchQuery, setSearchQuery]   = useState('')
+  const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const [seedState, setSeedState] = useState<SeedState>('idle')
 
   const getRange = useCallback(() => {
@@ -87,27 +92,38 @@ export function OverviewTab({ projectId }: Props) {
     setLoading(false)
   }, [projectId, getRange])
 
-  const fetchLeads = useCallback(async (statusFilter: string, search: string) => {
+  const fetchLeads = useCallback(async () => {
     setLeadsLoading(true)
-    const { start, end } = getRange()
-    const p = new URLSearchParams({
-      page: '1', limit: '25',
-      status: statusFilter, search,
-      sort: 'created_at', dir: 'desc',
-      start: start.toISOString(), end: end.toISOString(),
-    })
-    const res = await fetch(`/api/dashboard/${projectId}/leads?${p}`)
+    const res = await fetch(`/api/leads?projectId=${projectId}`)
     const json = await res.json()
-    setLeads(json.leads || [])
-    setLeadsTotal(json.total || 0)
+    setAllLeads(json.leads || [])
     setLeadsLoading(false)
-  }, [projectId, getRange])
+  }, [projectId])
+
+  const updateLead = useCallback((id: string, changes: Partial<Lead>) => {
+    setAllLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...changes } : l))
+    setDetailLead((prev) => prev?.id === id ? { ...prev, ...changes } : prev)
+    const existing = pendingUpdates.current.get(id)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(() => {
+      pendingUpdates.current.delete(id)
+      fetch(`/api/leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      })
+    }, 500)
+    pendingUpdates.current.set(id, timer)
+  }, [])
+
+  const deleteLead = useCallback((id: string) => {
+    setAllLeads((prev) => prev.filter((l) => l.id !== id))
+    setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s })
+    fetch(`/api/leads/${id}`, { method: 'DELETE' })
+  }, [])
 
   useEffect(() => { fetchSummary() }, [fetchSummary])
-  useEffect(() => {
-    const tab = TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]
-    fetchLeads(tab.filter, searchQuery)
-  }, [activeTab, searchQuery, fetchLeads])
+  useEffect(() => { fetchLeads() }, [fetchLeads])
 
   async function seedData() {
     setSeedState('seeding')
@@ -130,7 +146,7 @@ export function OverviewTab({ projectId }: Props) {
   const callsBooked     = summary?.kpis.calls_booked.current ?? 0
   const breakdown       = summary?.rawData.status_breakdown ?? []
   const attendedCount   = (breakdown.find((s: Record<string, unknown>) => s.status === 'attended')?.count as number) ?? 0
-  const purchasedCount  = (breakdown.find((s: Record<string, unknown>) => s.status === 'purchased')?.count as number) ?? 0
+  const purchasedCount  = (breakdown.find((s: Record<string, unknown>) => s.status === 'closed_deal')?.count as number) ?? 0
   const shows            = attendedCount + purchasedCount
   const surveysCompleted = (summary?.rawData.leads_summary ?? []).filter(
     (l: Record<string, unknown>) => l.source === 'typeform'
@@ -149,6 +165,20 @@ export function OverviewTab({ projectId }: Props) {
   const sourceData = (summary?.rawData.traffic_sources ?? []).map((d) => ({
     name: d.source, value: d.count,
   }))
+
+  // Compute leads filtered by selected date range + active stage tab + search
+  const { start: rangeStart, end: rangeEnd } = getRange()
+  const activeStageFilter = (TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]).filter
+  const filteredLeads = allLeads.filter((l) => {
+    const created = new Date(l.created_at)
+    const inRange = created >= rangeStart && created <= rangeEnd
+    const matchStage = !activeStageFilter || l.status === activeStageFilter
+    const matchSearch = !searchQuery ||
+      l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (l.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    return inRange && matchStage && matchSearch
+  })
+  const allTags = Array.from(new Set(allLeads.flatMap((l) => l.tags || [])))
 
   const fmtCash = (v: number) =>
     '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -346,109 +376,61 @@ export function OverviewTab({ projectId }: Props) {
         </div>
       </div>
 
-      {/* ── Data table ──────────────────────────────────────────────────── */}
+      {/* ── Data table (same as Leads CRM) ─────────────────────────────── */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h3 className="text-sm font-semibold">Data</h3>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        {/* Stage filter tabs + search */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border gap-4 flex-wrap">
+          <div className="flex items-center overflow-x-auto">
+            {TABLE_TABS.map((tab) => (
+              <button
+                key={tab.label}
+                onClick={() => setActiveTab(tab.label)}
+                className={cn(
+                  'px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
+                  activeTab === tab.label
+                    ? 'border-blue-500 text-blue-500'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <span className="text-xs text-muted-foreground/50">{filteredLeads.length.toLocaleString()} leads</span>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search…"
-              className="pl-8 pr-3 py-1.5 bg-muted/30 border border-border rounded-lg text-sm placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-blue-500/30 w-44 text-foreground"
+              className="px-3 py-1.5 bg-muted/30 border border-border rounded-lg text-sm placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-blue-500/30 w-44 text-foreground"
             />
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center px-5 border-b border-border overflow-x-auto">
-          {TABLE_TABS.map((tab) => (
-            <button
-              key={tab.label}
-              onClick={() => setActiveTab(tab.label)}
-              className={cn(
-                'px-3 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
-                activeTab === tab.label
-                  ? 'border-blue-500 text-blue-500'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <span className="ml-auto text-xs text-muted-foreground/50 pr-1 flex-shrink-0">{leadsTotal.toLocaleString()} total</span>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                {['Name', 'Email', 'Source', 'Status', 'Reg. Date', 'Attended', 'Purchase'].map((col) => (
-                  <th key={col} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider whitespace-nowrap">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {leadsLoading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    {[120, 160, 80, 70, 80, 50, 70].map((w, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-3.5 rounded animate-pulse bg-muted/50" style={{ width: w }} />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : leads.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-14 text-sm text-muted-foreground/50">
-                    No data for this period
-                  </td>
-                </tr>
-              ) : (
-                leads.map((lead) => (
-                  <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{lead.full_name || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{lead.email}</td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{lead.source || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize',
-                        lead.status === 'purchased' ? 'bg-emerald-500/15 text-emerald-500' :
-                        lead.status === 'attended'  ? 'bg-blue-500/15 text-blue-500'       :
-                        lead.status === 'no_show'   ? 'bg-amber-500/15 text-amber-500'     :
-                        lead.status === 'refunded'  ? 'bg-red-500/15 text-red-500'         :
-                        'bg-muted text-muted-foreground'
-                      )}>
-                        {lead.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {new Date(lead.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={cn('text-xs font-medium', lead.attended ? 'text-emerald-500' : 'text-muted-foreground/40')}>
-                        {lead.attended ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {lead.purchase_amount
-                        ? <span className="text-emerald-500">${lead.purchase_amount.toLocaleString()}</span>
-                        : <span className="text-muted-foreground/40">—</span>
-                      }
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {leadsLoading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground/50">Loading leads…</div>
+        ) : (
+          <LeadsTableView
+            leads={filteredLeads}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            onUpdateLead={updateLead}
+            onDeleteLead={deleteLead}
+            onOpenDetail={setDetailLead}
+            allTags={allTags}
+          />
+        )}
       </div>
+
+      <LeadDetailSheet
+        lead={detailLead}
+        open={!!detailLead}
+        onClose={() => setDetailLead(null)}
+        onUpdateLead={updateLead}
+        onDeleteLead={deleteLead}
+        allTags={allTags}
+        projectId={projectId}
+      />
 
     </div>
   )
