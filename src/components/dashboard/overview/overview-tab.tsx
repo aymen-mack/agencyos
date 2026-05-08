@@ -149,9 +149,9 @@ export function OverviewTab({ projectId }: Props) {
   const callsBooked     = summary?.kpis.calls_booked.current ?? 0
   const breakdown       = summary?.rawData.status_breakdown ?? []
   const showsCount      = (breakdown.find((s: Record<string, unknown>) => s.status === 'webinar_show')?.count as number) ?? 0
-  const purchasedCount  = breakdown
-    .filter((s: Record<string, unknown>) => s.status === 'closed_deal' || s.status === 'purchased')
-    .reduce((sum: number, s: Record<string, unknown>) => sum + ((s.count as number) ?? 0), 0)
+  const purchasedCount  = (summary?.rawData.leads_summary ?? []).filter(
+    (l: Record<string, unknown>) => Number(l.purchase_amount) > 0
+  ).length
   const shows            = showsCount
   const surveysCompleted = (summary?.rawData.leads_summary ?? []).filter(
     (l: Record<string, unknown>) => l.source === 'typeform'

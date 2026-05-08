@@ -94,14 +94,14 @@ export async function GET(
   const showRate = totalReg > 0 ? (totalAttended / totalReg) * 100 : 0
   const showRatePrev = totalRegPrev > 0 ? (lp.filter((l: { attended: boolean }) => l.attended).length / totalRegPrev) * 100 : 0
 
-  const isClosed = (s: string) => s === 'closed_deal' || s === 'purchased'
-  const totalPurchased = lc.filter((l) => isClosed(l.status)).length
+  // Closed deals = anyone with a purchase_amount recorded — same source of truth as Cash Collected
+  const totalPurchased = lc.filter((l) => Number(l.purchase_amount) > 0).length
   const convRate = totalReg > 0 ? (totalPurchased / totalReg) * 100 : 0
-  const convRatePrev = totalRegPrev > 0 ? (lp.filter((l: { status: string }) => isClosed(l.status)).length / totalRegPrev) * 100 : 0
+  const convRatePrev = totalRegPrev > 0 ? (lp.filter((l: { purchase_amount?: number }) => Number(l.purchase_amount) > 0).length / totalRegPrev) * 100 : 0
 
   const totalRefunded = lc.filter((l) => l.status === 'refunded').length
   const refundRate = totalPurchased + totalRefunded > 0 ? (totalRefunded / (totalPurchased + totalRefunded)) * 100 : 0
-  const prevPurchased = lp.filter((l: { status: string }) => isClosed(l.status)).length
+  const prevPurchased = lp.filter((l: { purchase_amount?: number }) => Number(l.purchase_amount) > 0).length
   const prevRefunded = lp.filter((l: { status: string }) => l.status === 'refunded').length
   const refundRatePrev = prevPurchased + prevRefunded > 0 ? (prevRefunded / (prevPurchased + prevRefunded)) * 100 : 0
 
