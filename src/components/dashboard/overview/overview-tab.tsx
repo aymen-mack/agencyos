@@ -49,12 +49,14 @@ export function OverviewTab({ projectId }: Props) {
   const [loading, setLoading]   = useState(true)
   const [activeTab, setActiveTab]   = useState('All')
   const [allLeads, setAllLeads] = useState<Lead[]>([])
+  const [total, setTotal] = useState(0)
   const [leadsLoading, setLeadsLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [searchQuery, setSearchQuery]   = useState('')
   const [tablePage, setTablePage] = useState(1)
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const activeStageFilterRef = useRef('')
   const [seedState, setSeedState] = useState<SeedState>('idle')
 
   const getRange = useCallback(() => {
@@ -96,11 +98,24 @@ export function OverviewTab({ projectId }: Props) {
 
   const fetchLeads = useCallback(async () => {
     setLeadsLoading(true)
-    const res = await fetch(`/api/leads?projectId=${projectId}`)
+    const { start, end } = getRange()
+    const params = new URLSearchParams({
+      projectId,
+      page: String(tablePage),
+      limit: '50',
+      sort: 'created_at',
+      dir: 'desc',
+      from: start.toISOString(),
+      to: end.toISOString(),
+    })
+    if (searchQuery) params.set('search', searchQuery)
+    if (activeStageFilterRef.current) params.set('status', activeStageFilterRef.current)
+    const res = await fetch(`/api/leads?${params}`)
     const json = await res.json()
     setAllLeads(json.leads || [])
+    setTotal(json.total ?? 0)
     setLeadsLoading(false)
-  }, [projectId])
+  }, [projectId, tablePage, getRange, searchQuery])
 
   const updateLead = useCallback((id: string, changes: Partial<Lead>) => {
     setAllLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...changes } : l))
@@ -126,7 +141,10 @@ export function OverviewTab({ projectId }: Props) {
 
   useEffect(() => { fetchSummary() }, [fetchSummary])
   useEffect(() => { fetchLeads() }, [fetchLeads])
-  useEffect(() => { setTablePage(1) }, [activeTab, searchQuery, period, customStart, customEnd])
+  useEffect(() => {
+    activeStageFilterRef.current = (TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]).filter
+    setTablePage(1)
+  }, [activeTab, searchQuery, period, customStart, customEnd])
 
   async function seedData() {
     setSeedState('seeding')
@@ -171,22 +189,10 @@ export function OverviewTab({ projectId }: Props) {
     name: d.source, value: d.count,
   }))
 
-  // Compute leads filtered by selected date range + active stage tab + search
-  const { start: rangeStart, end: rangeEnd } = getRange()
-  const activeStageFilter = (TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]).filter
-  const filteredLeads = allLeads.filter((l) => {
-    const created = new Date(l.created_at)
-    const inRange = created >= rangeStart && created <= rangeEnd
-    const matchStage = !activeStageFilter || l.status === activeStageFilter
-    const matchSearch = !searchQuery ||
-      l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (l.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
-    return inRange && matchStage && matchSearch
-  })
+  // Server already filters by date range, stage, and search — allLeads is the current page
   const allTags = Array.from(new Set(allLeads.flatMap((l) => l.tags || [])))
   const PAGE_SIZE = 50
-  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE))
-  const pagedLeads = filteredLeads.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const fmtCash = (v: number) =>
     '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -405,7 +411,7 @@ export function OverviewTab({ projectId }: Props) {
             ))}
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <span className="text-xs text-muted-foreground/50">{filteredLeads.length.toLocaleString()} leads</span>
+            <span className="text-xs text-muted-foreground/50">{total.toLocaleString()} leads</span>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -419,7 +425,7 @@ export function OverviewTab({ projectId }: Props) {
           <div className="p-8 text-center text-sm text-muted-foreground/50">Loading leads…</div>
         ) : (
           <LeadsTableView
-            leads={pagedLeads}
+            leads={allLeads}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             onUpdateLead={updateLead}
@@ -466,7 +472,7 @@ export function OverviewTab({ projectId }: Props) {
                 <ChevronRight className="w-4 h-4" />
               </button>
               <span className="text-xs text-muted-foreground/50 ml-1">
-                {(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, filteredLeads.length)} of {filteredLeads.length}
+                {(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, total)} of {total.toLocaleString()}
               </span>
             </div>
             <Link

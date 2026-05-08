@@ -6,19 +6,38 @@ export async function GET(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const projectId = req.nextUrl.searchParams.get('projectId')
+  const sp = req.nextUrl.searchParams
+  const projectId = sp.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
 
+  const page   = Math.max(1, parseInt(sp.get('page')  || '1'))
+  const limit  = Math.min(200, Math.max(1, parseInt(sp.get('limit') || '100')))
+  const search = sp.get('search') || ''
+  const status = sp.get('status') || ''
+  const sort   = sp.get('sort')   || 'created_at'
+  const dir    = sp.get('dir')    || 'desc'
+  const from   = sp.get('from')   || ''
+  const to     = sp.get('to')     || ''
+
   const admin = createSupabaseAdminClient()
-  const { data: leads, error } = await admin
+
+  let query = admin
     .from('leads')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
-    .limit(10000)
+
+  if (search) query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`)
+  if (status) query = query.eq('status', status)
+  if (from)   query = query.gte('created_at', from)
+  if (to)     query = query.lte('created_at', to)
+
+  const from_idx = (page - 1) * limit
+  const { data, count, error } = await query
+    .order(sort, { ascending: dir === 'asc' })
+    .range(from_idx, from_idx + limit - 1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ leads: leads || [] })
+  return NextResponse.json({ leads: data || [], total: count ?? 0 })
 }
 
 export async function POST(req: NextRequest) {
@@ -56,7 +75,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Log event
   await admin.from('lead_events').insert({
     lead_id: lead.id,
     project_id: projectId,

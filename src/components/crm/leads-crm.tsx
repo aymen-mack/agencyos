@@ -12,21 +12,26 @@ import { AddLeadSheet } from './add-lead-sheet'
 import { LeadDetailSheet } from './lead-detail-sheet'
 import { ActivityFeed } from './activity-feed'
 import { toast } from 'sonner'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface LeadsCRMProps {
   projectId: string
-  initialLeads: Lead[]
 }
 
 export type ViewMode = 'table' | 'kanban'
 
-export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
+const PAGE_SIZE = 100
+
+export function LeadsCRM({ projectId }: LeadsCRMProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
   const { lastLeadUpdate } = useRealtime()
 
-  const [leads, setLeads] = useState<Lead[]>(initialLeads)
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState(searchParams.get('filter') || '')
@@ -34,30 +39,62 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
   const [addOpen, setAddOpen] = useState(false)
   const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [showActivity, setShowActivity] = useState(false)
+  const [loading, setLoading] = useState(true)
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null)
 
-  // Reload leads when realtime fires
+  const fetchLeads = useCallback(async (p: number, s: string, status: string) => {
+    setLoading(true)
+    const params = new URLSearchParams({
+      projectId,
+      page: String(p),
+      limit: String(PAGE_SIZE),
+      sort: 'created_at',
+      dir: 'desc',
+    })
+    if (s) params.set('search', s)
+    if (status) params.set('status', status)
+
+    const res = await fetch(`/api/leads?${params}`)
+    const json = await res.json()
+    if (json.leads) {
+      setLeads(json.leads)
+      setTotal(json.total ?? 0)
+    }
+    setLoading(false)
+  }, [projectId])
+
+  useEffect(() => {
+    fetchLeads(page, search, statusFilter)
+  }, [page, statusFilter, fetchLeads]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search input — reset to page 1
+  useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    searchTimeout.current = setTimeout(() => {
+      setPage(1)
+      fetchLeads(1, search, statusFilter)
+    }, 300)
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }
+  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload on realtime update
   useEffect(() => {
     if (lastLeadUpdate === 0) return
-    fetch(`/api/leads?projectId=${projectId}`)
-      .then((r) => r.json())
-      .then(({ leads: fresh }) => { if (fresh) setLeads(fresh) })
-  }, [lastLeadUpdate, projectId])
+    fetchLeads(page, search, statusFilter)
+  }, [lastLeadUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync URL filter param to state
+  // Sync URL filter → state
   useEffect(() => {
     const f = searchParams.get('filter') || ''
     setStatusFilter(f)
+    setPage(1)
   }, [searchParams])
 
-  // Optimistic lead update — debounced API sync
   const updateLead = useCallback((id: string, changes: Partial<Lead>) => {
     setLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...changes } : l))
-
-    // Also update detail sheet if open
     setDetailLead((prev) => prev?.id === id ? { ...prev, ...changes } : prev)
 
-    // Debounce API call
     const existing = pendingUpdates.current.get(id)
     if (existing) clearTimeout(existing)
 
@@ -72,10 +109,7 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
         if (!res.ok) {
           const err = await res.json()
           toast.error(`Save failed: ${err.error}`)
-          // Revert by refetching
-          fetch(`/api/leads?projectId=${projectId}`)
-            .then((r) => r.json())
-            .then(({ leads: fresh }) => { if (fresh) setLeads(fresh) })
+          fetchLeads(page, search, statusFilter)
         }
       } catch {
         toast.error('Failed to save changes')
@@ -83,14 +117,16 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
     }, 500)
 
     pendingUpdates.current.set(id, timer)
-  }, [projectId])
+  }, [page, search, statusFilter, fetchLeads])
 
   const addLead = useCallback((lead: Lead) => {
     setLeads((prev) => [lead, ...prev])
+    setTotal((t) => t + 1)
   }, [])
 
   const deleteLead = useCallback(async (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id))
+    setTotal((t) => Math.max(0, t - 1))
     setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s })
     await fetch(`/api/leads/${id}`, { method: 'DELETE' })
     toast.success('Lead deleted')
@@ -102,6 +138,7 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
 
     if (action === 'delete') {
       setLeads((prev) => prev.filter((l) => !selectedIds.has(l.id)))
+      setTotal((t) => Math.max(0, t - ids.length))
       setSelectedIds(new Set())
     } else if (action === 'update_status' && data?.status) {
       setLeads((prev) => prev.map((l) => selectedIds.has(l.id) ? { ...l, status: data.status as string } : l))
@@ -129,22 +166,14 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
 
   const setFilter = useCallback((filter: string) => {
     setStatusFilter(filter)
+    setPage(1)
     const params = new URLSearchParams(searchParams.toString())
     if (filter) params.set('filter', filter)
     else params.delete('filter')
     router.replace(`${pathname}?${params.toString()}`)
   }, [pathname, router, searchParams])
 
-  // Compute filtered + searched leads
-  const filteredLeads = leads.filter((lead) => {
-    const matchSearch = !search ||
-      lead.email.toLowerCase().includes(search.toLowerCase()) ||
-      (lead.full_name || '').toLowerCase().includes(search.toLowerCase())
-    const matchStatus = !statusFilter || lead.status === statusFilter
-    return matchSearch && matchStatus
-  })
-
-  // Collect all tags across leads for autocomplete
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const allTags = Array.from(new Set(leads.flatMap((l) => l.tags || [])))
 
   return (
@@ -158,7 +187,7 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
         onStatusFilterChange={setFilter}
         onAddLead={() => setAddOpen(true)}
         onToggleActivity={() => setShowActivity((v) => !v)}
-        totalCount={filteredLeads.length}
+        totalCount={total}
       />
 
       {selectedIds.size > 0 && (
@@ -171,23 +200,67 @@ export function LeadsCRM({ projectId, initialLeads }: LeadsCRMProps) {
       )}
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-auto">
-          {viewMode === 'table' ? (
-            <LeadsTableView
-              leads={filteredLeads}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              onUpdateLead={updateLead}
-              onDeleteLead={deleteLead}
-              onOpenDetail={setDetailLead}
-              allTags={allTags}
-            />
-          ) : (
-            <LeadsKanbanView
-              leads={filteredLeads}
-              onUpdateLead={updateLead}
-              onOpenDetail={setDetailLead}
-            />
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-auto">
+            {loading ? (
+              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">Loading…</div>
+            ) : viewMode === 'table' ? (
+              <LeadsTableView
+                leads={leads}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                onUpdateLead={updateLead}
+                onDeleteLead={deleteLead}
+                onOpenDetail={setDetailLead}
+                allTags={allTags}
+              />
+            ) : (
+              <LeadsKanbanView
+                leads={leads}
+                onUpdateLead={updateLead}
+                onOpenDetail={setDetailLead}
+              />
+            )}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border flex-shrink-0 bg-card">
+              <span className="text-xs text-muted-foreground">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()} leads
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="p-1.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const start = Math.max(1, Math.min(page - 2, totalPages - 4))
+                  const p = start + i
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={cn(
+                        'w-7 h-7 rounded text-xs font-medium transition-colors',
+                        page === p ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="p-1.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
