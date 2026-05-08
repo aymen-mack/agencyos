@@ -9,6 +9,34 @@ function fmt(start: Date, end: Date) {
   return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }
 }
 
+// Supabase PostgREST caps at max-rows (default 1000) per request regardless of .limit().
+// Paginate in 1000-row batches until all leads are collected.
+async function fetchAllLeadsInRange(
+  admin: AnyClient,
+  projectId: string,
+  from: string,
+  to: string
+): Promise<AnyClient[]> {
+  const BATCH = 1000
+  const all: AnyClient[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await admin
+      .from('leads')
+      .select('id,source,status,campaign,attended,purchase_amount,is_registrant,created_at')
+      .eq('project_id', projectId)
+      .gte('created_at', from)
+      .lte('created_at', to)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + BATCH - 1)
+    if (error || !data?.length) break
+    all.push(...data)
+    if (data.length < BATCH) break
+    offset += BATCH
+  }
+  return all
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -38,8 +66,8 @@ export async function GET(
     { data: adPrev },
     { data: emailCurr },
     { data: emailPrev },
-    { data: leadsCurr },
-    { data: leadsPrev },
+    leadsCurr,
+    leadsPrev,
   ] = await Promise.all([
     admin.from('webinar_metrics').select('*').eq('project_id', projectId).gte('date', s).lte('date', e),
     admin.from('webinar_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
@@ -47,8 +75,8 @@ export async function GET(
     admin.from('ad_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
     admin.from('email_metrics').select('*').eq('project_id', projectId).gte('date', s).lte('date', e),
     admin.from('email_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
-    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,is_registrant,created_at').eq('project_id', projectId).gte('created_at', start.toISOString()).lte('created_at', end.toISOString()).limit(50000),
-    admin.from('leads').select('id,source,status,campaign,attended,purchase_amount,is_registrant,created_at').eq('project_id', projectId).gte('created_at', prevStart.toISOString()).lte('created_at', prevEnd.toISOString()).limit(50000),
+    fetchAllLeadsInRange(admin, projectId, start.toISOString(), end.toISOString()),
+    fetchAllLeadsInRange(admin, projectId, prevStart.toISOString(), prevEnd.toISOString()),
   ])
 
   const wm = (webinarCurr || []) as Record<string, number>[]
@@ -57,10 +85,8 @@ export async function GET(
   const amPrev = (adPrev || []) as Record<string, number>[]
   const em = (emailCurr || []) as Record<string, number>[]
   const emPrev = (emailPrev || []) as Record<string, number>[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lc = (leadsCurr || []) as any[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lp = (leadsPrev || []) as any[]
+  const lc = leadsCurr
+  const lp = leadsPrev
 
   function sumField(rows: Record<string, number>[], field: string) {
     return rows.reduce((a, r) => a + (Number(r[field]) || 0), 0)
