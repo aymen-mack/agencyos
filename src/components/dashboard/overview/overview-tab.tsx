@@ -56,7 +56,7 @@ export function OverviewTab({ projectId }: Props) {
   const [searchQuery, setSearchQuery]   = useState('')
   const [tablePage, setTablePage] = useState(1)
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map())
-  const activeStageFilterRef = useRef('')
+  const [activeStageFilter, setActiveStageFilter] = useState('')
   const [seedState, setSeedState] = useState<SeedState>('idle')
 
   const getRange = useCallback(() => {
@@ -109,13 +109,13 @@ export function OverviewTab({ projectId }: Props) {
       to: end.toISOString(),
     })
     if (searchQuery) params.set('search', searchQuery)
-    if (activeStageFilterRef.current) params.set('status', activeStageFilterRef.current)
+    if (activeStageFilter) params.set('status', activeStageFilter)
     const res = await fetch(`/api/leads?${params}`)
     const json = await res.json()
     setAllLeads(json.leads || [])
     setTotal(json.total ?? 0)
     setLeadsLoading(false)
-  }, [projectId, tablePage, getRange, searchQuery])
+  }, [projectId, tablePage, getRange, searchQuery, activeStageFilter])
 
   const updateLead = useCallback((id: string, changes: Partial<Lead>) => {
     setAllLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...changes } : l))
@@ -142,7 +142,7 @@ export function OverviewTab({ projectId }: Props) {
   useEffect(() => { fetchSummary() }, [fetchSummary])
   useEffect(() => { fetchLeads() }, [fetchLeads])
   useEffect(() => {
-    activeStageFilterRef.current = (TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]).filter
+    setActiveStageFilter((TABLE_TABS.find((t) => t.label === activeTab) ?? TABLE_TABS[0]).filter)
     setTablePage(1)
   }, [activeTab, searchQuery, period, customStart, customEnd])
 
