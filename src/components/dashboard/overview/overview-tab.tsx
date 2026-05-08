@@ -5,7 +5,8 @@ import {
   AreaChart, Area, PieChart, Pie, Cell,
   Tooltip, ResponsiveContainer, XAxis, YAxis,
 } from 'recharts'
-import { Database, CheckCircle2, Trash2, CalendarDays, ChevronDown } from 'lucide-react'
+import { Database, CheckCircle2, Trash2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { DashboardSummary } from './types'
 import { Lead } from '@/types/database'
@@ -52,6 +53,7 @@ export function OverviewTab({ projectId }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [searchQuery, setSearchQuery]   = useState('')
+  const [tablePage, setTablePage] = useState(1)
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const [seedState, setSeedState] = useState<SeedState>('idle')
 
@@ -124,6 +126,7 @@ export function OverviewTab({ projectId }: Props) {
 
   useEffect(() => { fetchSummary() }, [fetchSummary])
   useEffect(() => { fetchLeads() }, [fetchLeads])
+  useEffect(() => { setTablePage(1) }, [activeTab, searchQuery, period, customStart, customEnd])
 
   async function seedData() {
     setSeedState('seeding')
@@ -179,6 +182,9 @@ export function OverviewTab({ projectId }: Props) {
     return inRange && matchStage && matchSearch
   })
   const allTags = Array.from(new Set(allLeads.flatMap((l) => l.tags || [])))
+  const PAGE_SIZE = 50
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE))
+  const pagedLeads = filteredLeads.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE)
 
   const fmtCash = (v: number) =>
     '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -411,7 +417,7 @@ export function OverviewTab({ projectId }: Props) {
           <div className="p-8 text-center text-sm text-muted-foreground/50">Loading leads…</div>
         ) : (
           <LeadsTableView
-            leads={filteredLeads}
+            leads={pagedLeads}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             onUpdateLead={updateLead}
@@ -419,6 +425,56 @@ export function OverviewTab({ projectId }: Props) {
             onOpenDetail={setDetailLead}
             allTags={allTags}
           />
+        )}
+
+        {/* Pagination footer */}
+        {!leadsLoading && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+            <div className="flex items-center gap-1.5">
+              <button
+                disabled={tablePage <= 1}
+                onClick={() => setTablePage((p) => p - 1)}
+                className="p-1.5 rounded-lg hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(tablePage - 2, totalPages - 4))
+                const p = start + i
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setTablePage(p)}
+                    className={cn(
+                      'w-7 h-7 rounded-lg text-xs font-medium transition-colors',
+                      tablePage === p
+                        ? 'bg-blue-500 text-white'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                    )}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+              <button
+                disabled={tablePage >= totalPages}
+                onClick={() => setTablePage((p) => p + 1)}
+                className="p-1.5 rounded-lg hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-muted-foreground/50 ml-1">
+                {(tablePage - 1) * PAGE_SIZE + 1}–{Math.min(tablePage * PAGE_SIZE, filteredLeads.length)} of {filteredLeads.length}
+              </span>
+            </div>
+            <Link
+              href={`/dashboard/${projectId}/leads`}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View all leads
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         )}
       </div>
 
