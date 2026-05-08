@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
+    .limit(10000)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ leads: leads || [] })
