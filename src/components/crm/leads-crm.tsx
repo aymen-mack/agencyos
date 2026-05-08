@@ -9,6 +9,7 @@ import { LeadsKanbanView } from './leads-kanban-view'
 import { CRMToolbar } from './crm-toolbar'
 import { BulkActionsBar } from './bulk-actions-bar'
 import { AddLeadSheet } from './add-lead-sheet'
+import { CsvImportSheet } from './csv-import-sheet'
 import { LeadDetailSheet } from './lead-detail-sheet'
 import { ActivityFeed } from './activity-feed'
 import { toast } from 'sonner'
@@ -37,6 +38,7 @@ export function LeadsCRM({ projectId }: LeadsCRMProps) {
   const [statusFilter, setStatusFilter] = useState(searchParams.get('filter') || '')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [addOpen, setAddOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [showActivity, setShowActivity] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -186,6 +188,7 @@ export function LeadsCRM({ projectId }: LeadsCRMProps) {
         statusFilter={statusFilter}
         onStatusFilterChange={setFilter}
         onAddLead={() => setAddOpen(true)}
+        onImportCsv={() => setImportOpen(true)}
         onToggleActivity={() => setShowActivity((v) => !v)}
         totalCount={total}
       />
@@ -270,6 +273,17 @@ export function LeadsCRM({ projectId }: LeadsCRMProps) {
           </div>
         )}
       </div>
+
+      <CsvImportSheet
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        projectId={projectId}
+        onImported={(count) => {
+          toast.success(`${count.toLocaleString()} leads imported`)
+          fetchLeads(1, search, statusFilter)
+          setPage(1)
+        }}
+      />
 
       <AddLeadSheet
         open={addOpen}

@@ -5,7 +5,7 @@ import { PIPELINE_STAGES } from '@/lib/pipeline'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { LayoutGrid, List, Plus, Activity, X } from 'lucide-react'
+import { LayoutGrid, List, Plus, Activity, X, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface CRMToolbarProps {
@@ -16,13 +16,14 @@ interface CRMToolbarProps {
   statusFilter: string
   onStatusFilterChange: (v: string) => void
   onAddLead: () => void
+  onImportCsv: () => void
   onToggleActivity: () => void
   totalCount: number
 }
 
 export function CRMToolbar({
   viewMode, onViewModeChange, search, onSearchChange,
-  statusFilter, onStatusFilterChange, onAddLead, onToggleActivity, totalCount,
+  statusFilter, onStatusFilterChange, onAddLead, onImportCsv, onToggleActivity, totalCount,
 }: CRMToolbarProps) {
   return (
     <div className="flex items-center gap-2 px-4 py-3 border-b border-border flex-shrink-0">
@@ -81,6 +82,12 @@ export function CRMToolbar({
         {/* Activity feed toggle */}
         <Button variant="ghost" size="sm" className="h-8 px-2.5 text-muted-foreground" onClick={onToggleActivity}>
           <Activity className="w-4 h-4" />
+        </Button>
+
+        {/* Import CSV */}
+        <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={onImportCsv}>
+          <Upload className="w-3.5 h-3.5" />
+          Import CSV
         </Button>
 
         {/* Add lead */}
