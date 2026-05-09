@@ -5,7 +5,8 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
   Tooltip, ResponsiveContainer, XAxis, YAxis, LabelList,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, User } from 'lucide-react'
+import { ChevronLeft, ChevronRight, User, Upload } from 'lucide-react'
+import { CsvImportSheet } from '@/components/crm/csv-import-sheet'
 import { cn } from '@/lib/utils'
 import { Lead } from '@/types/database'
 import { getStage } from '@/lib/pipeline'
@@ -276,6 +277,7 @@ function SurveyTable({ projectId }: { projectId: string }) {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [importOpen, setImportOpen] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
 
   const fetchLeads = useCallback(async (p: number, s: string) => {
@@ -325,13 +327,33 @@ function SurveyTable({ projectId }: { projectId: string }) {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-4">
         <p className="text-sm font-medium">{total.toLocaleString()} survey leads</p>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name or email…"
-          className="px-3 py-1.5 bg-muted/30 border border-border rounded-lg text-sm placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-blue-500/30 w-52 text-foreground"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or email…"
+            className="px-3 py-1.5 bg-muted/30 border border-border rounded-lg text-sm placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-blue-500/30 w-52 text-foreground"
+          />
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import CSV
+          </button>
+        </div>
       </div>
+
+      <CsvImportSheet
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        projectId={projectId}
+        onImported={(count) => {
+          setImportOpen(false)
+          setPage(1)
+          fetchLeads(1, search)
+        }}
+      />
 
       {/* Table */}
       <div className="overflow-x-auto">
