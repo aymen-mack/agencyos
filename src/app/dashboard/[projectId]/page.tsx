@@ -4,7 +4,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { RealtimeIndicator } from '@/components/dashboard/realtime-indicator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OverviewTab } from '@/components/dashboard/overview/overview-tab'
-import { WebinarTab } from '@/components/dashboard/webinar-tab'
+import { SurveyTab } from '@/components/dashboard/survey/survey-tab'
 import { AdSpendTab } from '@/components/dashboard/ad-spend-tab'
 import { EmailTab } from '@/components/dashboard/email-tab'
 
@@ -36,7 +36,7 @@ export default async function ProjectPage({
             <TabsList className="bg-transparent h-auto p-0 gap-0">
               {[
                 { value: 'overview',  label: 'Overview'        },
-                { value: 'webinar',   label: 'Webinar Data'    },
+                { value: 'survey',    label: 'Survey'          },
                 { value: 'adspend',   label: 'Ad Spend'        },
                 { value: 'email',     label: 'Email Marketing' },
               ].map((tab) => (
@@ -55,8 +55,8 @@ export default async function ProjectPage({
             <OverviewTab projectId={projectId} />
           </TabsContent>
 
-          <TabsContent value="webinar" className="mt-0 p-6">
-            <WebinarTab projectId={projectId} />
+          <TabsContent value="survey" className="mt-0 p-6">
+            <SurveyTab projectId={projectId} />
           </TabsContent>
 
           <TabsContent value="adspend" className="mt-0 p-6">

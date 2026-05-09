@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   const dir    = sp.get('dir')    || 'desc'
   const from   = sp.get('from')   || ''
   const to     = sp.get('to')     || ''
+  const source = sp.get('source') || ''
 
   const admin = createSupabaseAdminClient()
 
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
 
   if (search) query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`)
   if (status) query = query.eq('status', status)
+  if (source) query = query.or(`source.eq.${source},status.eq.survey_filled`)
   if (from)   query = query.gte('created_at', from)
   if (to)     query = query.lte('created_at', to)
 
