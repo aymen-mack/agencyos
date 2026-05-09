@@ -19,16 +19,24 @@ interface CsvImportSheetProps {
 
 type Step = 'upload' | 'map' | 'importing' | 'done'
 
-// Lead fields available for CSV column mapping
+// Lead fields available for CSV column mapping.
+// Fields prefixed with "survey:" are stored in the lead's survey_data JSON column.
 const LEAD_FIELDS = [
-  { value: '__skip__',       label: "Don't import" },
-  { value: 'email',          label: 'Email (required)' },
-  { value: 'full_name',      label: 'Full Name' },
-  { value: 'phone',          label: 'Phone' },
-  { value: 'source',         label: 'Source' },
-  { value: 'campaign',       label: 'Campaign' },
-  { value: 'tags',           label: 'Tags (comma-separated)' },
-  { value: 'purchase_amount',label: 'Purchase Amount' },
+  { value: '__skip__',                label: "Don't import",                  group: 'skip'   },
+  { value: 'email',                   label: 'Email (required)',               group: 'lead'   },
+  { value: 'full_name',               label: 'Full Name',                      group: 'lead'   },
+  { value: 'phone',                   label: 'Phone',                          group: 'lead'   },
+  { value: 'source',                  label: 'Source',                         group: 'lead'   },
+  { value: 'campaign',                label: 'Campaign',                       group: 'lead'   },
+  { value: 'tags',                    label: 'Tags (comma-separated)',          group: 'lead'   },
+  { value: 'purchase_amount',         label: 'Purchase Amount',                group: 'lead'   },
+  { value: 'survey:age',              label: 'Survey: Age',                    group: 'survey' },
+  { value: 'survey:occupation',       label: 'Survey: Occupation',             group: 'survey' },
+  { value: 'survey:income',           label: 'Survey: Monthly Income',         group: 'survey' },
+  { value: 'survey:sophistication',   label: 'Survey: Level of Sophistication',group: 'survey' },
+  { value: 'survey:challenges',       label: 'Survey: Current Challenges',     group: 'survey' },
+  { value: 'survey:previous_investment', label: 'Survey: Previous Investment', group: 'survey' },
+  { value: 'survey:speed_to_action',  label: 'Survey: Speed to Action',        group: 'survey' },
 ]
 
 function guessMapping(header: string): string {
@@ -40,6 +48,14 @@ function guessMapping(header: string): string {
   if (['campaign', 'campaignname', 'utm_campaign'].includes(h)) return 'campaign'
   if (['tags', 'tag', 'labels'].includes(h)) return 'tags'
   if (['amount', 'purchaseamount', 'revenue', 'price', 'value'].includes(h)) return 'purchase_amount'
+  // Survey fields
+  if (['age', 'agerange', 'howold'].includes(h)) return 'survey:age'
+  if (['occupation', 'job', 'jobtitle', 'profession', 'career'].includes(h)) return 'survey:occupation'
+  if (['income', 'monthlyincome', 'salary', 'earnings'].includes(h)) return 'survey:income'
+  if (['sophistication', 'experience', 'howlong', 'level'].includes(h)) return 'survey:sophistication'
+  if (['challenges', 'struggle', 'painpoints', 'problems'].includes(h)) return 'survey:challenges'
+  if (['previousinvestment', 'invested', 'selfeducation', 'coaching'].includes(h)) return 'survey:previous_investment'
+  if (['speedtoaction', 'action', 'timeline', 'urgency', 'howsoon'].includes(h)) return 'survey:speed_to_action'
   return '__skip__'
 }
 
@@ -123,14 +139,22 @@ export function CsvImportSheet({ open, onClose, projectId, onImported }: CsvImpo
 
     setStep('importing')
 
-    // Build rows using the field mapping
+    // Build rows using the field mapping.
+    // Fields mapped to "survey:xxx" are collected into a survey_data sub-object.
     const rows = allRows.map((row) => {
-      const out: Record<string, string | boolean> = { status: defaultStatus }
+      const out: Record<string, string | boolean | Record<string, string>> = { status: defaultStatus }
+      const survey_data: Record<string, string> = {}
       for (const [csvCol, leadField] of Object.entries(mapping)) {
         if (leadField === '__skip__') continue
         const val = row[csvCol]?.trim() ?? ''
-        if (val) out[leadField] = val
+        if (!val) continue
+        if (leadField.startsWith('survey:')) {
+          survey_data[leadField.slice(7)] = val  // e.g. "survey:age" → survey_data.age
+        } else {
+          out[leadField] = val
+        }
       }
+      if (Object.keys(survey_data).length > 0) out.survey_data = survey_data
       if (defaultStatus === 'registrant') out.is_registrant = true
       return out
     })
@@ -248,7 +272,13 @@ export function CsvImportSheet({ open, onClose, projectId, onImported }: CsvImpo
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {LEAD_FIELDS.map((f) => (
+                        {LEAD_FIELDS.filter((f) => f.group !== 'survey').map((f) => (
+                          <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                        ))}
+                        <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-t border-border mt-1">
+                          Survey Fields
+                        </div>
+                        {LEAD_FIELDS.filter((f) => f.group === 'survey').map((f) => (
                           <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
                         ))}
                       </SelectContent>

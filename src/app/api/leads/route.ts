@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { projectId, email, full_name, phone, source, status, tags, score } = body
+  const { projectId, email, full_name, phone, source, status, tags, score, survey_data } = body
 
   if (!projectId || !email) {
     return NextResponse.json({ error: 'projectId and email are required' }, { status: 400 })
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       status: status || 'registrant',
       tags: tags || [],
       score: score || 0,
+      ...(survey_data && Object.keys(survey_data).length > 0 ? { survey_data } : {}),
     })
     .select()
     .single()

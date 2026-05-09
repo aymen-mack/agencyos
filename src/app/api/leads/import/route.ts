@@ -12,6 +12,7 @@ interface ImportRow {
   purchase_amount?: string
   status: string
   is_registrant?: boolean
+  survey_data?: Record<string, string>
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
     project_id: string; email: string; full_name: string | null; phone: string | null
     source: string; campaign: string | null; tags: string[]; purchase_amount: number | null
     status: string; is_registrant: boolean; score: number
+    survey_data?: Record<string, string>
   }
   // Normalize and validate rows — skip any without a valid email
   const valid: LeadInsert[] = []
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
       status: row.status || defaultStatus || 'registrant',
       is_registrant: row.is_registrant ?? (defaultStatus === 'registrant'),
       score: 0,
+      ...(row.survey_data && Object.keys(row.survey_data).length > 0 ? { survey_data: row.survey_data } : {}),
     })
   }
 

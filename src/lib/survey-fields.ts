@@ -102,7 +102,7 @@ export function extractSurveyFields(data: Record<string, unknown>): SurveyFields
   // Monthly income: "monthly" before bare "income" to prefer the income question over any sophistication question that mentions income
   const monthly_income = findField(data, ['monthly_income', 'income_from', 'monthly', 'income', 'earn', 'salary'], claimed)
   // Sophistication: time-based ("how long" / "been doing") before generic "experience"
-  const sophistication = findField(data, ['how_long', 'been_doing', 'been_going', 'been_invest', 'been_trad', 'been_in_the', 'time_in', 'months_in', 'years_in'], claimed)
+  const sophistication = findField(data, ['how_long', 'been_doing', 'been_going', 'been_invest', 'been_trad', 'been_in_the', 'time_in', 'months_in', 'years_in', 'sophist', 'experience'], claimed)
   const challenges = findField(data, ['challenge', 'struggle', 'problem', 'difficulty', 'facing', 'pain_point', 'pain'], claimed)
   // Previous investment in self-education — specific before generic
   const previous_investment = findField(data, ['self_educ', 'invested_in_your', 'invested_in_self', 'invested_in_edu', 'previous_invest', 'spent_on', 'education', 'coaching', 'course', 'program'], claimed)
