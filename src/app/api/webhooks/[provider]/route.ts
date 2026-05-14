@@ -299,7 +299,8 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
     }
     const { data } = await admin
       .from('leads')
-      .update(updateData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update(updateData as any)
       .eq('id', existing.id)
       .select()
       .single()

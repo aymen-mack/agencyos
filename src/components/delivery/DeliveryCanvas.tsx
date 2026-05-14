@@ -269,7 +269,7 @@ function DeliveryCanvasInner({ projectId, initialNodes, initialEdges, members }:
   }, [ctxName, ctxMenu, createNode])
 
   // ── Right-click on pane ───────────────────────────────────────────────────
-  const onPaneContextMenu = useCallback((event: React.MouseEvent) => {
+  const onPaneContextMenu = useCallback((event: React.MouseEvent | MouseEvent) => {
     event.preventDefault()
     const rect = containerRef.current?.getBoundingClientRect()
     const containerX = event.clientX - (rect?.left ?? 0)
