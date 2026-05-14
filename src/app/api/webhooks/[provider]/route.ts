@@ -4,6 +4,20 @@ import { computeLeadScore, SCORE_WEIGHTS } from '@/lib/scoring/lead-score'
 import { Json } from '@/types/database'
 import crypto from 'crypto'
 
+// ---- Status normalisation ----
+// Make.com sends human-readable values like "Survey Filled". Map them to DB ids.
+function normalizeStatus(raw: string | undefined): string {
+  if (!raw) return 'registrant'
+  const s = raw.toLowerCase().trim()
+  if (s === 'survey filled' || s === 'survey_filled')    return 'survey_filled'
+  if (s === 'webinar show'  || s === 'webinar_show' || s === 'attended') return 'webinar_show'
+  if (s === 'call booked'   || s === 'call_booked')      return 'call_booked'
+  if (s === 'call showed'   || s === 'call_showed')      return 'call_showed'
+  if (s === 'closed deal'   || s === 'closed_deal' || s === 'deal closed') return 'closed_deal'
+  if (s === 'registered'    || s === 'registrant')       return 'registrant'
+  return 'registrant'
+}
+
 // ---- Signature verification ----
 
 function verifyTypeformSignature(body: string, signature: string | null): boolean {
@@ -123,27 +137,54 @@ async function handleTypeform(
     return
   }
 
-  // Upsert lead
-  const { data: lead, error: leadError } = await admin
+  // Find existing lead then INSERT or UPDATE (avoids upsert unique-constraint dependency)
+  const { data: existing } = await admin
     .from('leads')
-    .upsert(
-      {
+    .select('id, survey_data')
+    .eq('project_id', projectId)
+    .eq('email', email)
+    .maybeSingle()
+
+  let lead: { id: string; [key: string]: unknown } | null = null
+
+  if (existing) {
+    const { data, error: updateError } = await admin
+      .from('leads')
+      .update({
+        status: 'survey_filled',
+        full_name: name || undefined,
+        source: 'typeform',
+        source_ref: response?.form_id as string || null,
+        survey_data: { ...((existing.survey_data as Record<string, unknown>) || {}), ...surveyData } as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .select()
+      .single()
+    if (updateError) { console.error('Failed to update lead from Typeform:', updateError); return }
+    lead = data
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error: insertError } = await (admin.from('leads') as any)
+      .insert({
         project_id: projectId,
         email,
         full_name: name || null,
         source: 'typeform',
         source_ref: response?.form_id as string || null,
         survey_data: surveyData as Json,
-        is_registrant: true,
+        status: 'survey_filled',
+        score: 0,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'project_id,email' }
-    )
-    .select()
-    .single()
+      })
+      .select()
+      .single()
+    if (insertError) { console.error('Failed to insert lead from Typeform:', insertError); return }
+    lead = data
+  }
 
-  if (leadError || !lead) {
-    console.error('Failed to upsert lead from Typeform:', leadError)
+  if (!lead) {
+    console.error('No lead returned from Typeform handler')
     return
   }
 
@@ -178,16 +219,15 @@ async function handleTypeform(
 }
 
 async function handleMake(payload: Record<string, unknown>, projectId: string) {
-  // Make.com sends structured data — handles arbitrary events
   const admin = createSupabaseAdminClient()
-  const eventType = (payload.event_type || payload.Event_type || payload.EventType) as string || 'make_event'
 
-  // Accept any capitalisation Make might use for the field keys
   const email = (
-    payload.email || payload.Email || payload.EMAIL
-  ) as string
-
+    (payload.email || payload.Email || payload.EMAIL) as string
+  )?.trim().toLowerCase()
   if (!email) return
+
+  const rawStatus = (payload.status || payload.Status || payload.STATUS) as string | undefined
+  const status = normalizeStatus(rawStatus)
 
   const fullName = (
     payload.name || payload.Name || payload.NAME ||
@@ -199,78 +239,112 @@ async function handleMake(payload: Record<string, unknown>, projectId: string) {
     payload.phone_number || payload['Phone Number']
   ) as string | undefined
 
-  const source = (
-    payload.source || payload.Source || 'webflow'
-  ) as string
+  const source = (payload.source || payload.Source || 'make') as string
 
-  // Accept dollars (purchase_amount) or cents (amount_subtotal / amount_cents from Stripe via Make)
-  const dollars = Number(payload.purchase_amount || payload.Purchase_Amount || payload.amount || payload.Amount || 0)
-  const cents = Number(payload.amount_subtotal || payload.amount_cents || payload.Amount_Subtotal || 0)
-  const purchaseAmount = dollars || (cents > 0 ? cents / 100 : null)
+  // ── Survey fields ─────────────────────────────────────────────────────────
+  const pick = (...keys: string[]) => {
+    for (const k of keys) if (payload[k]) return String(payload[k])
+    return undefined
+  }
+  const surveyData: Record<string, string> = {}
+  const age              = pick('age', 'Age', 'AGE')
+  const occupation       = pick('occupation', 'Occupation', 'OCCUPATION')
+  const income           = pick('income', 'Income', 'Income Level', 'income_level')
+  const sophistication   = pick('sophistication', 'Sophistication', 'SOPHISTICATION')
+  const challenges       = pick('challenges', 'Challenges', 'challenge', 'Challenge')
+  const prevInvestment   = pick('previous_investment', 'Previous Investment', 'Previous_Investment')
+  const speedToAction    = pick('speed_to_action', 'Speed to Action', 'Speed_To_Action', 'speed', 'Speed')
+  if (age)            surveyData.age                 = age
+  if (occupation)     surveyData.occupation          = occupation
+  if (income)         surveyData.income              = income
+  if (sophistication) surveyData.sophistication      = sophistication
+  if (challenges)     surveyData.challenges          = challenges
+  if (prevInvestment) surveyData.previous_investment = prevInvestment
+  if (speedToAction)  surveyData.speed_to_action     = speedToAction
+  const hasSurvey = Object.keys(surveyData).length > 0
 
-  const isDeal = eventType === 'deal_closed'
+  // ── Payment shortcut ──────────────────────────────────────────────────────
+  if (status === 'closed_deal') {
+    const dollars = Number(payload.purchase_amount || payload.Purchase_Amount || payload.amount || 0)
+    const cents   = Number(payload.amount_subtotal || payload.amount_cents || 0)
+    const purchaseAmount = dollars || (cents > 0 ? cents / 100 : null)
+    const lead = await upsertLeadForPayment(admin, projectId, email, { source, purchase_amount: purchaseAmount, full_name: fullName })
+    if (lead) {
+      await admin.from('lead_events').insert({ lead_id: lead.id, project_id: projectId, type: 'deal_closed', payload: payload as unknown as Json, score_delta: SCORE_WEIGHTS.deal_closed })
+    }
+    return
+  }
 
-  let lead: { id: string; project_id: string; [key: string]: unknown } | null = null
+  // ── Find existing lead then INSERT or UPDATE (avoids upsert constraint) ───
+  const { data: existing } = await admin
+    .from('leads')
+    .select('id, survey_data')
+    .eq('project_id', projectId)
+    .eq('email', email)
+    .maybeSingle()
 
-  if (isDeal) {
-    // Payment event: preserve existing registration source if lead already exists
-    lead = await upsertLeadForPayment(admin, projectId, email, {
-      source,
-      purchase_amount: purchaseAmount,
-      full_name: fullName,
-    })
-  } else {
-    // Registration/engagement event: mark as registrant
+  let lead: { id: string; [key: string]: unknown } | null = null
+
+  if (existing) {
+    const updateData: Record<string, unknown> = {
+      status,
+      updated_at: new Date().toISOString(),
+    }
+    if (fullName) updateData.full_name = fullName
+    if (hasSurvey) {
+      updateData.survey_data = {
+        ...((existing.survey_data as Record<string, unknown>) || {}),
+        ...surveyData,
+      }
+    }
     const { data } = await admin
       .from('leads')
-      .upsert(
-        {
-          project_id: projectId,
-          email: email.trim().toLowerCase(),
-          full_name: fullName || null,
-          phone: phone || null,
-          source,
-          status: 'registrant',
-          is_registrant: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'project_id,email' }
-      )
+      .update(updateData)
+      .eq('id', existing.id)
       .select()
       .single()
+    lead = data
+  } else {
+    const insertData: Record<string, unknown> = {
+      project_id: projectId,
+      email,
+      full_name: fullName || null,
+      phone: phone || null,
+      source,
+      status,
+      score: 0,
+      is_registrant: status === 'registrant',
+      updated_at: new Date().toISOString(),
+    }
+    if (hasSurvey) insertData.survey_data = surveyData
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (admin.from('leads') as any).insert(insertData).select().single()
     lead = data
   }
 
   if (!lead) return
 
-  // Insert event
-  const scoreDelta = SCORE_WEIGHTS[eventType] || 5
+  // ── Event + score ─────────────────────────────────────────────────────────
+  const eventType = status === 'survey_filled' ? 'form_submission' : status
   await admin.from('lead_events').insert({
     lead_id: lead.id,
     project_id: projectId,
     type: eventType,
     payload: payload as unknown as Json,
-    score_delta: scoreDelta,
+    score_delta: SCORE_WEIGHTS[eventType] || 5,
   })
 
-  // Recompute score
   const { data: events } = await admin
-    .from('lead_events')
-    .select('type, score_delta')
-    .eq('lead_id', lead.id)
+    .from('lead_events').select('type, score_delta').eq('lead_id', lead.id)
+  const { data: refreshed } = await admin.from('leads').select('survey_data').eq('id', lead.id).single()
+  const breakdown = computeLeadScore(events || [], (refreshed?.survey_data as Record<string, unknown>) || {})
 
-  const { data: currentLead } = await admin.from('leads').select('survey_data').eq('id', lead.id).single()
-  const breakdown = computeLeadScore(events || [], (currentLead?.survey_data as Record<string, unknown>) || {})
-
-  await admin
-    .from('leads')
-    .update({
-      score: breakdown.total,
-      score_breakdown: breakdown as unknown as Json,
-      tags: [breakdown.tag],
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', lead.id)
+  await admin.from('leads').update({
+    score: breakdown.total,
+    score_breakdown: breakdown as unknown as Json,
+    tags: [breakdown.tag],
+    updated_at: new Date().toISOString(),
+  }).eq('id', lead.id)
 }
 
 async function handleStripe(payload: Record<string, unknown>, projectId: string) {

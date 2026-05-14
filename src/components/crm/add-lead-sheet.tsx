@@ -22,6 +22,7 @@ interface AddLeadSheetProps {
   onClose: () => void
   projectId: string
   onAdded: (lead: Lead) => void
+  defaultStatus?: string
 }
 
 const EMPTY_FORM = {
@@ -32,9 +33,9 @@ const EMPTY_SURVEY = {
   challenges: '', previous_investment: '', speed_to_action: '',
 }
 
-export function AddLeadSheet({ open, onClose, projectId, onAdded }: AddLeadSheetProps) {
+export function AddLeadSheet({ open, onClose, projectId, onAdded, defaultStatus }: AddLeadSheetProps) {
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, status: defaultStatus ?? 'registrant' }))
   const [survey, setSurvey] = useState(EMPTY_SURVEY)
   const [showSurvey, setShowSurvey] = useState(false)
 
@@ -76,7 +77,7 @@ export function AddLeadSheet({ open, onClose, projectId, onAdded }: AddLeadSheet
       onAdded(lead)
       toast.success('Lead added')
       onClose()
-      setForm(EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, status: defaultStatus ?? 'registrant' })
       setSurvey(EMPTY_SURVEY)
       setShowSurvey(false)
     } catch {

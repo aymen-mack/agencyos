@@ -3,9 +3,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   CheckCircle2, Circle, Clock, XCircle, Plus, ChevronDown,
-  ChevronRight, Trash2, Loader2, ListTodo,
+  ChevronRight, Trash2, Loader2, ListTodo, List, GitBranch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DeliveryCanvas } from '@/components/delivery/DeliveryCanvas'
 
 type TaskStatus = 'todo' | 'in_progress' | 'done' | 'blocked'
 
@@ -80,6 +81,7 @@ interface TasksHubProps {
 }
 
 export function TasksHub({ projectId, initialTasks, projectName }: TasksHubProps) {
+  const [view, setView] = useState<'list' | 'flow'>('list')
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
@@ -348,8 +350,50 @@ export function TasksHub({ projectId, initialTasks, projectName }: TasksHubProps
 
   const allSections = [...new Set([...SECTIONS, ...tasks.map((t) => t.section)])]
 
+  if (view === 'flow') {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Tab bar */}
+        <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-4 pb-0 border-b border-border">
+          <button
+            onClick={() => setView('list')}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition-colors"
+          >
+            <List className="w-3.5 h-3.5" />
+            List
+          </button>
+          <button
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground border-b-2 border-blue-500 transition-colors"
+          >
+            <GitBranch className="w-3.5 h-3.5" />
+            Flow
+          </button>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <DeliveryCanvas projectId={projectId} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 mb-6 border-b border-border -mt-1 pb-0">
+        <button
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground border-b-2 border-blue-500 transition-colors"
+        >
+          <List className="w-3.5 h-3.5" />
+          List
+        </button>
+        <button
+          onClick={() => setView('flow')}
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition-colors"
+        >
+          <GitBranch className="w-3.5 h-3.5" />
+          Flow
+        </button>
+      </div>
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Tasks</h1>

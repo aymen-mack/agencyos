@@ -68,6 +68,7 @@ export async function GET(
     { data: emailPrev },
     leadsCurr,
     leadsPrev,
+    { count: surveyFilledCount },
   ] = await Promise.all([
     admin.from('webinar_metrics').select('*').eq('project_id', projectId).gte('date', s).lte('date', e),
     admin.from('webinar_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
@@ -77,6 +78,7 @@ export async function GET(
     admin.from('email_metrics').select('*').eq('project_id', projectId).gte('date', ps).lte('date', pe),
     fetchAllLeadsInRange(admin, projectId, start.toISOString(), end.toISOString()),
     fetchAllLeadsInRange(admin, projectId, prevStart.toISOString(), prevEnd.toISOString()),
+    admin.from('leads').select('id', { count: 'exact', head: true }).eq('project_id', projectId).eq('status', 'survey_filled'),
   ])
 
   const wm = (webinarCurr || []) as Record<string, number>[]
@@ -214,6 +216,7 @@ export async function GET(
       email_open_rate:   { current: emailOpenRate,   previous: emailOpenRatePrev,   sparkline: buildSparkline(em, 'open_rate') },
     },
     rawData: {
+      total_survey_filled: surveyFilledCount ?? 0,
       revenue_over_time: Object.values(revenueByDate).sort((a, b) => a.date.localeCompare(b.date)),
       traffic_sources: Object.entries(sourceCount).map(([source, count]) => ({ source, count, revenue: sourceRevenue[source] || 0 })).sort((a, b) => b.count - a.count),
       status_breakdown: Object.entries(statusCount).map(([status, count]) => ({ status, count })),

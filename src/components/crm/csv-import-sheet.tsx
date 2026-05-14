@@ -232,9 +232,9 @@ export function CsvImportSheet({ open, onClose, projectId, onImported }: CsvImpo
 
         {/* STEP 2: Map fields */}
         {step === 'map' && (
-          <div className="flex-1 flex flex-col min-h-0 gap-4 overflow-y-auto">
-            {/* Default status selector */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+          <div className="flex-1 flex flex-col min-h-0 gap-3">
+            {/* PINNED TOP: Default status selector */}
+            <div className="flex-shrink-0 flex items-center gap-3 p-3 rounded-lg bg-muted/50">
               <div className="flex-1">
                 <p className="text-sm font-medium">Pipeline Stage for all rows</p>
                 <p className="text-xs text-muted-foreground">Every imported lead will be set to this stage</p>
@@ -251,82 +251,87 @@ export function CsvImportSheet({ open, onClose, projectId, onImported }: CsvImpo
               </Select>
             </div>
 
-            {/* Column mappings */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Map CSV columns to lead fields</p>
-              <div className="space-y-1.5">
-                {headers.map((header) => (
-                  <div key={header} className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate font-mono bg-muted rounded px-2 py-1">{header}</p>
-                      {preview[0]?.[header] && (
-                        <p className="text-xs text-muted-foreground truncate px-1 mt-0.5">{preview[0][header]}</p>
-                      )}
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <Select
-                      value={mapping[header] ?? '__skip__'}
-                      onValueChange={(v) => setMapField(header, v ?? '__skip__')}
-                    >
-                      <SelectTrigger className={cn('w-44 h-8 text-sm', isDuplicate(header) && 'border-destructive')}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LEAD_FIELDS.filter((f) => f.group !== 'survey').map((f) => (
-                          <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                        ))}
-                        <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-t border-border mt-1">
-                          Survey Fields
-                        </div>
-                        {LEAD_FIELDS.filter((f) => f.group === 'survey').map((f) => (
-                          <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Preview */}
-            {preview.length > 0 && (
-              <div className="rounded-lg border border-border overflow-hidden">
-                <p className="text-xs font-medium px-3 py-2 border-b border-border bg-muted/30">Preview (first {preview.length} rows)</p>
-                <div className="overflow-x-auto">
-                  <table className="text-xs w-full">
-                    <thead>
-                      <tr className="border-b border-border">
-                        {headers.filter((h) => mapping[h] !== '__skip__').map((h) => (
-                          <th key={h} className="px-3 py-1.5 text-left font-medium text-muted-foreground whitespace-nowrap">{mapping[h]}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.map((row, i) => (
-                        <tr key={i} className="border-b border-border last:border-0">
-                          {headers.filter((h) => mapping[h] !== '__skip__').map((h) => (
-                            <td key={h} className="px-3 py-1.5 text-muted-foreground max-w-[160px] truncate">{row[h] || '—'}</td>
+            {/* SCROLLABLE MIDDLE: Column mappings + preview */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-0.5">
+              {/* Column mappings */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Map CSV columns to lead fields</p>
+                <div className="space-y-1.5">
+                  {headers.map((header) => (
+                    <div key={header} className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate font-mono bg-muted rounded px-2 py-1">{header}</p>
+                        {preview[0]?.[header] && (
+                          <p className="text-xs text-muted-foreground truncate px-1 mt-0.5">{preview[0][header]}</p>
+                        )}
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <Select
+                        value={mapping[header] ?? '__skip__'}
+                        onValueChange={(v) => setMapField(header, v ?? '__skip__')}
+                      >
+                        <SelectTrigger className={cn('w-44 h-8 text-sm', isDuplicate(header) && 'border-destructive')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LEAD_FIELDS.filter((f) => f.group !== 'survey').map((f) => (
+                            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-t border-border mt-1">
+                            Survey Fields
+                          </div>
+                          {LEAD_FIELDS.filter((f) => f.group === 'survey').map((f) => (
+                            <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
 
-            {!emailMapped && (
-              <div className="flex items-center gap-2 text-xs text-destructive">
-                <AlertCircle className="w-3.5 h-3.5" />
-                Map a column to <span className="font-medium">Email</span> to continue
+              {/* Preview */}
+              {preview.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <p className="text-xs font-medium px-3 py-2 border-b border-border bg-muted/30">Preview (first {preview.length} rows)</p>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs w-full">
+                      <thead>
+                        <tr className="border-b border-border">
+                          {headers.filter((h) => mapping[h] !== '__skip__').map((h) => (
+                            <th key={h} className="px-3 py-1.5 text-left font-medium text-muted-foreground whitespace-nowrap">{mapping[h]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.map((row, i) => (
+                          <tr key={i} className="border-b border-border last:border-0">
+                            {headers.filter((h) => mapping[h] !== '__skip__').map((h) => (
+                              <td key={h} className="px-3 py-1.5 text-muted-foreground max-w-[160px] truncate">{row[h] || '—'}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* PINNED BOTTOM: Error + buttons */}
+            <div className="flex-shrink-0 flex flex-col gap-2 pt-1 pb-2">
+              {!emailMapped && (
+                <div className="flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Map a column to <span className="font-medium">Email</span> to continue
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button onClick={handleImport} disabled={!emailMapped} className="flex-1">
+                  Import {allRows.length.toLocaleString()} leads
+                </Button>
+                <Button variant="outline" onClick={reset}>Back</Button>
               </div>
-            )}
-
-            <div className="flex gap-2 pt-1 pb-2">
-              <Button onClick={handleImport} disabled={!emailMapped} className="flex-1">
-                Import {allRows.length.toLocaleString()} leads
-              </Button>
-              <Button variant="outline" onClick={reset}>Back</Button>
             </div>
           </div>
         )}

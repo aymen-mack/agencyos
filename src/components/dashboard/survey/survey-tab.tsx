@@ -5,8 +5,9 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
   Tooltip, ResponsiveContainer, XAxis, YAxis, LabelList,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, User, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, User, Upload, Plus } from 'lucide-react'
 import { CsvImportSheet } from '@/components/crm/csv-import-sheet'
+import { AddLeadSheet } from '@/components/crm/add-lead-sheet'
 import { cn } from '@/lib/utils'
 import { Lead } from '@/types/database'
 import { getStage } from '@/lib/pipeline'
@@ -278,6 +279,7 @@ function SurveyTable({ projectId }: { projectId: string }) {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [importOpen, setImportOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
 
   const fetchLeads = useCallback(async (p: number, s: string) => {
@@ -286,7 +288,7 @@ function SurveyTable({ projectId }: { projectId: string }) {
       projectId,
       page: String(p),
       limit: String(PAGE_SIZE),
-      source: 'typeform',
+      status: 'survey_filled',
       sort: 'created_at',
       dir: 'desc',
     })
@@ -341,15 +343,33 @@ function SurveyTable({ projectId }: { projectId: string }) {
             <Upload className="w-3.5 h-3.5" />
             Import CSV
           </button>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Lead
+          </button>
         </div>
       </div>
 
       <CsvImportSheet
         open={importOpen}
-        onClose={() => setImportOpen(false)}
+        onClose={() => { setImportOpen(false); fetchLeads(1, search) }}
         projectId={projectId}
-        onImported={(count) => {
-          setImportOpen(false)
+        onImported={() => {
+          setPage(1)
+          fetchLeads(1, search)
+        }}
+      />
+
+      <AddLeadSheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        projectId={projectId}
+        defaultStatus="survey_filled"
+        onAdded={() => {
+          setAddOpen(false)
           setPage(1)
           fetchLeads(1, search)
         }}
@@ -357,7 +377,7 @@ function SurveyTable({ projectId }: { projectId: string }) {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[1400px] text-sm">
           <thead>
             <tr className="border-b border-border">
               {cols.map((c) => (

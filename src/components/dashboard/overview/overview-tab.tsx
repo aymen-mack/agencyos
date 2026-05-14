@@ -171,9 +171,7 @@ export function OverviewTab({ projectId }: Props) {
     (l: Record<string, unknown>) => Number(l.purchase_amount) > 0
   ).length
   const shows            = showsCount
-  const surveysCompleted = (summary?.rawData.leads_summary ?? []).filter(
-    (l: Record<string, unknown>) => l.source === 'typeform'
-  ).length
+  const surveysCompleted = summary?.rawData.total_survey_filled ?? 0
 
   const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0
   const surveysRate = pct(surveysCompleted, registrants)

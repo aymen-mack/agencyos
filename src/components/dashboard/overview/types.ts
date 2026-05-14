@@ -82,6 +82,7 @@ export interface KPISummary {
 }
 
 export interface DashboardRawData {
+  total_survey_filled: number
   revenue_over_time: { date: string; cash_collected: number; total_revenue: number }[]
   traffic_sources: { source: string; count: number; revenue: number }[]
   status_breakdown: { status: string; count: number }[]
