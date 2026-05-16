@@ -272,6 +272,10 @@ function QualityBadge({ quality }: { quality: LeadQuality }) {
   )
 }
 
+const COL_LABELS = ['Name', 'Email', 'Lead Quality', 'Status', 'Age', 'Occupation', 'Income', 'Sophistication', 'Challenges', 'Prev. Investment', 'Speed to Action']
+const COL_DEFAULTS = [150, 190, 170, 120, 80, 170, 170, 210, 230, 170, 170]
+const COL_MIN = 60
+
 function SurveyTable({ projectId }: { projectId: string }) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [total, setTotal] = useState(0)
@@ -281,6 +285,26 @@ function SurveyTable({ projectId }: { projectId: string }) {
   const [importOpen, setImportOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
+  const [colWidths, setColWidths] = useState<number[]>(COL_DEFAULTS)
+  const dragRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null)
+
+  const onResizeMouseDown = (e: React.MouseEvent, colIdx: number) => {
+    e.preventDefault()
+    dragRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] }
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return
+      const { colIdx: ci, startX, startW } = dragRef.current
+      const newW = Math.max(COL_MIN, startW + ev.clientX - startX)
+      setColWidths((prev) => { const next = [...prev]; next[ci] = newW; return next })
+    }
+    const onUp = () => {
+      dragRef.current = null
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   const fetchLeads = useCallback(async (p: number, s: string) => {
     setLoading(true)
@@ -309,20 +333,7 @@ function SurveyTable({ projectId }: { projectId: string }) {
   }, [search]) // eslint-disable-line
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
-  const cols = [
-    { label: 'Name', w: 'w-36' },
-    { label: 'Email', w: 'w-44' },
-    { label: 'Lead Quality', w: 'w-44' },
-    { label: 'Status', w: 'w-28' },
-    { label: 'Age', w: 'w-20' },
-    { label: 'Occupation', w: 'w-36' },
-    { label: 'Income', w: 'w-36' },
-    { label: 'Sophistication', w: 'w-32' },
-    { label: 'Challenges', w: 'w-52' },
-    { label: 'Prev. Investment', w: 'w-36' },
-    { label: 'Speed to Action', w: 'w-36' },
-  ]
+  const totalTableWidth = colWidths.reduce((s, w) => s + w, 0)
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -377,12 +388,24 @@ function SurveyTable({ projectId }: { projectId: string }) {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1400px] text-sm">
+        <table className="text-sm table-fixed border-collapse" style={{ width: totalTableWidth }}>
+          <colgroup>
+            {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+          </colgroup>
           <thead>
             <tr className="border-b border-border">
-              {cols.map((c) => (
-                <th key={c.label} className={cn('px-4 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap', c.w)}>
-                  {c.label}
+              {COL_LABELS.map((label, i) => (
+                <th
+                  key={label}
+                  className="relative px-4 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap select-none overflow-hidden"
+                  style={{ width: colWidths[i] }}
+                >
+                  <span className="truncate block">{label}</span>
+                  {/* Resize handle */}
+                  <div
+                    onMouseDown={(e) => onResizeMouseDown(e, i)}
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500/60 transition-colors z-10"
+                  />
                 </th>
               ))}
             </tr>
@@ -390,13 +413,13 @@ function SurveyTable({ projectId }: { projectId: string }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={cols.length} className="py-12 text-center text-sm text-muted-foreground/50">
+                <td colSpan={COL_LABELS.length} className="py-12 text-center text-sm text-muted-foreground/50">
                   Loading…
                 </td>
               </tr>
             ) : leads.length === 0 ? (
               <tr>
-                <td colSpan={cols.length} className="py-12 text-center text-sm text-muted-foreground/50">
+                <td colSpan={COL_LABELS.length} className="py-12 text-center text-sm text-muted-foreground/50">
                   No survey leads yet. Connect Typeform to start collecting data.
                 </td>
               </tr>
@@ -407,29 +430,28 @@ function SurveyTable({ projectId }: { projectId: string }) {
                 const quality = getLeadQuality(survey)
                 const stage = getStage(lead.status)
                 const sophLevel = sophisticationToLevel(fields.sophistication)
+                const cell = 'px-4 py-3 overflow-hidden'
                 return (
                   <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium truncate max-w-[9rem]">{lead.full_name || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[11rem] text-xs">{lead.email}</td>
-                    <td className="px-4 py-3"><QualityBadge quality={quality} /></td>
-                    <td className="px-4 py-3">
-                      <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', stage.color)}>
+                    <td className={cell}><div className="truncate font-medium text-sm">{lead.full_name || '—'}</div></td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{lead.email}</div></td>
+                    <td className={cell}><QualityBadge quality={quality} /></td>
+                    <td className={cell}>
+                      <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border whitespace-nowrap', stage.color)}>
                         {stage.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{fields.age || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[9rem]">{fields.occupation || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[9rem]">{fields.monthly_income || '—'}</td>
-                    <td className="px-4 py-3 text-xs">
-                      {fields.sophistication
-                        ? <span className="text-muted-foreground">L{sophLevel} — {fields.sophistication}</span>
-                        : <span className="text-muted-foreground/40">—</span>}
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.age || '—'}</div></td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.occupation || '—'}</div></td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.monthly_income || '—'}</div></td>
+                    <td className={cell}>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {fields.sophistication ? `L${sophLevel} — ${fields.sophistication}` : '—'}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[13rem]">
-                      <span className="line-clamp-2">{fields.challenges || '—'}</span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[9rem]">{fields.previous_investment || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[9rem]">{fields.speed_to_action || '—'}</td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.challenges || '—'}</div></td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.previous_investment || '—'}</div></td>
+                    <td className={cell}><div className="truncate text-xs text-muted-foreground">{fields.speed_to_action || '—'}</div></td>
                   </tr>
                 )
               })
