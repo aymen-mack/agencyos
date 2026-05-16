@@ -105,8 +105,15 @@ export function extractSurveyFields(data: Record<string, unknown>): SurveyFields
   const sophistication = findField(data, ['how_long', 'been_doing', 'been_going', 'been_invest', 'been_trad', 'been_in_the', 'time_in', 'months_in', 'years_in', 'sophist', 'experience'], claimed)
   const challenges = findField(data, ['challenge', 'struggle', 'problem', 'difficulty', 'facing', 'pain_point', 'pain'], claimed)
   // Previous investment in self-education — specific before generic
-  const previous_investment = findField(data, ['self_educ', 'invested_in_your', 'invested_in_self', 'invested_in_edu', 'previous_invest', 'spent_on', 'education', 'coaching', 'course', 'program'], claimed)
-  const speed_to_action = findField(data, ['take_action', 'speed_to', 'how_soon', 'when_would', 'how_quickly', 'action', 'soon', 'ready'], claimed)
+  const previous_investment = findField(data, [
+    'self_educ', 'invested_in_your', 'invested_in_self', 'invested_in_edu',
+    'previous_invest', 'spent_on', 'coaching', 'course', 'program',
+    'education', 'bought', 'invest',
+  ], claimed)
+  const speed_to_action = findField(data, [
+    'take_action', 'speed_to', 'how_soon', 'when_would', 'how_quickly',
+    'timeline', 'urgency', 'action', 'soon', 'ready', 'commit', 'implement',
+  ], claimed)
 
   const monthly_income_usd = monthly_income ? parseMoneyMin(monthly_income) : 0
   const sophistication_months = sophistication ? parseSophisticationMonths(sophistication) : 0
@@ -129,8 +136,7 @@ export function extractSurveyFields(data: Record<string, unknown>): SurveyFields
 }
 
 // Scoring: 4 criteria, each worth 1 point.
-// 4/4 = most_likely | 3/4 = likely | 2/4 = probable | 0-1/4 = least_likely
-// "Likely" naturally captures "like most likely but income < $3k" since income > $3k is one criterion.
+// Income ≥ $3k is a hard floor — always at least 'likely' regardless of other factors.
 export function getLeadQuality(surveyData: Record<string, unknown>): LeadQuality {
   const f = extractSurveyFields(surveyData)
   const score =
@@ -139,8 +145,10 @@ export function getLeadQuality(surveyData: Record<string, unknown>): LeadQuality
     (f.sophistication_months >= 6 ? 1 : 0) +
     (f.is_immediate ? 1 : 0)
   if (score >= 4) return 'most_likely'
-  if (score === 3) return 'likely'
-  if (score === 2) return 'probable'
+  if (score >= 3) return 'likely'
+  // Income ≥ $3k: floor at 'likely' — beats 'probable' and 'least_likely'
+  if (f.monthly_income_usd >= 3000) return 'likely'
+  if (score >= 2) return 'probable'
   return 'least_likely'
 }
 
