@@ -7,6 +7,7 @@ import { createSupabaseClientWithToken } from '@/lib/supabase/client'
 import { Integration } from '@/types/database'
 import { IntegrationCard, IntegrationConfig } from './integration-card'
 import { toast } from 'sonner'
+import { Copy, Check } from 'lucide-react'
 
 const INTEGRATIONS: IntegrationConfig[] = [
   {
@@ -138,12 +139,9 @@ export function IntegrationsHub({ projectId }: IntegrationsHubProps) {
   async function handleConnect(provider: string) {
     if (provider === 'kit') {
       setConnecting('kit')
-      // Redirect to OAuth initiation endpoint
       window.location.href = `/api/integrations/kit/connect?projectId=${projectId}`
-      return
     }
-    // For webhook-only integrations (typeform, make) — show webhook URL
-    toast.info(`Configure your ${provider} webhook to: ${window.location.origin}/api/webhooks/${provider}?projectId=${projectId}`)
+    // Webhook providers are self-service — their setup cards are always visible below
   }
 
   async function handleDisconnect(provider: string) {
@@ -169,8 +167,10 @@ export function IntegrationsHub({ projectId }: IntegrationsHubProps) {
     )
   }
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h2 className="text-base font-semibold text-foreground">Integrations</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -178,8 +178,9 @@ export function IntegrationsHub({ projectId }: IntegrationsHubProps) {
         </p>
       </div>
 
+      {/* OAuth / coming-soon integrations */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {INTEGRATIONS.map((config) => {
+        {INTEGRATIONS.filter((c) => !WEBHOOK_PROVIDERS.includes(c.provider)).map((config) => {
           const integration = getIntegrationStatus(config.provider)
           return (
             <IntegrationCard
@@ -195,23 +196,122 @@ export function IntegrationsHub({ projectId }: IntegrationsHubProps) {
         })}
       </div>
 
-      {/* Webhook info */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-medium text-foreground mb-2">Webhook Endpoints</h3>
-        <p className="text-xs text-muted-foreground mb-3">
-          Use these URLs in Make.com, Typeform, or any other webhook source to push data into this project.
+      {/* Webhook self-service setup */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-1">Webhook Integrations</h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Copy the URL below and paste it into the platform — no coding required.
         </p>
-        <div className="space-y-2">
-          {['typeform', 'make', 'stripe', 'whop'].map((provider) => (
-            <div key={provider} className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-20 capitalize">{provider}</span>
-              <code className="text-xs bg-secondary rounded px-2 py-1 text-foreground font-mono flex-1 truncate">
-                {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/{provider}?projectId={projectId}
-              </code>
-            </div>
+        <div className="space-y-4">
+          {WEBHOOK_SETUP.map((ws) => (
+            <WebhookSetupCard
+              key={ws.provider}
+              {...ws}
+              url={`${origin}/api/webhooks/${ws.provider}?projectId=${projectId}`}
+            />
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Webhook providers list ────────────────────────────────────────────────────
+
+const WEBHOOK_PROVIDERS = ['typeform', 'make']
+
+interface WebhookSetup {
+  provider: string
+  name: string
+  icon: string
+  steps: string[]
+}
+
+const WEBHOOK_SETUP: WebhookSetup[] = [
+  {
+    provider: 'typeform',
+    name: 'Typeform',
+    icon: '📋',
+    steps: [
+      'Open your Typeform and go to Connect → Webhooks',
+      'Click "Add a webhook"',
+      'Paste the URL above into the Endpoint field',
+      'Toggle the webhook ON and click Save',
+      'Every new survey submission will now appear in this project automatically',
+    ],
+  },
+  {
+    provider: 'make',
+    name: 'Make.com',
+    icon: '⚙️',
+    steps: [
+      'Open your Make.com scenario',
+      'Add or find the module that has your lead data (e.g. Typeform, Google Sheets, CRM)',
+      'After that module, add an HTTP → Make a request module',
+      'Set Method to POST and paste the URL above',
+      'Set Body type to Raw, format to JSON',
+      'Map the fields: email, name, status, age, income, occupation, sophistication, challenges, previous_investment, speed_to_action',
+      'Run the scenario — leads will appear in this project instantly',
+    ],
+  },
+]
+
+// ── WebhookSetupCard ──────────────────────────────────────────────────────────
+
+function WebhookSetupCard({ name, icon, url, steps }: WebhookSetup & { url: string }) {
+  const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  function copy() {
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Header row */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+        <span className="text-xl">{icon}</span>
+        <span className="text-sm font-medium text-foreground flex-1">{name}</span>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {open ? 'Hide setup guide ↑' : 'View setup guide ↓'}
+        </button>
+      </div>
+
+      {/* URL row — always visible */}
+      <div className="flex items-center gap-2 px-4 py-3">
+        <code className="flex-1 text-xs font-mono bg-secondary rounded-lg px-3 py-2 text-foreground truncate">
+          {url}
+        </code>
+        <button
+          onClick={copy}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+        >
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? 'Copied!' : 'Copy URL'}
+        </button>
+      </div>
+
+      {/* Expandable setup steps */}
+      {open && (
+        <div className="px-4 pb-4 border-t border-border/50 pt-3">
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Setup guide</p>
+          <ol className="space-y-2">
+            {steps.map((step, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-xs text-muted-foreground">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-secondary flex items-center justify-center text-[10px] font-semibold text-foreground mt-0.5">
+                  {i + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   )
 }
